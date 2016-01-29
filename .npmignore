@@ -1,0 +1,27 @@
+# Coverage directory used by tools like istanbul
+coverage
+
+# Grunt intermediate storage (http://gruntjs.com/creating-plugins#storing-task-files)
+.grunt
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled files
+build
+
+# Ignore editor config files
+*.sublime-workspace
+*.sublime-project
+.vscode
+.eslintrc
+jsconfig.json
+
+# Ignore private files
+credentials.json
+
+# These will be shared over github but not npm
+DESIGN.md
+docs
+jsduck-config
+test

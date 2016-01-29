@@ -1,0 +1,40 @@
+[
+  {
+    "name": "Components",
+    "groups": [
+      {
+        "name": "Core Classes",
+        "classes": [
+          "layer.Client",
+          "layer.Conversation",
+          "layer.Message",
+          "layer.MessagePart",
+          "layer.Query"
+        ]
+      },
+      {
+        "name": "Utilities",
+        "classes": [
+          "layer.QueryBuilder.ConversationsQuery",
+          "layer.QueryBuilder.MessagesQuery",
+          "layer.LayerEvent",
+          "layer.LayerError",
+          "layer.utils",
+          "layer.Root",
+          "layer.Content",
+          "layer.Constants"
+        ]
+      },
+      {
+        "name": "Services",
+        "classes": [
+          "layer.TypingIndicators.TypingPublisher",
+          "layer.TypingIndicators.TypingListener",
+          "layer.TypingIndicators.TypingIndicatorListener",
+          "layer.SyncManager"
+        ]
+      }
+    ]
+  }
+]
+
