@@ -6,7 +6,7 @@ The Layer Web SDK is a JavaScript library for adding chat services to your web a
 
 ## Public Beta Disclaimer
 
-This **public beta is NOT production ready**; while we will not stop you from using it in production, your expections of polish and support will need to account for this. There are known limitations and known concerns with the Layer Web SDK.
+This **public beta is NOT production ready**; while we will not stop you from using it in production, your expectations of polish and support will need to account for this. There are known limitations and known concerns with the Layer Web SDK.
 
 ## Installation
 
