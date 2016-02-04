@@ -37,17 +37,17 @@
  * var query = client.createQuery({
  *     model: layer.Query.Message,
  *     predicate: "conversation.id = 'layer:///conversations/uuid'",
- *     dataType: 'instance'
+ *     dataType: layer.Query.InstanceDataType
  * })
  *
  * var query = client.createQuery({
  *     model: layer.Query.Message,
  *     predicate: "conversation.id = 'layer:///conversations/uuid'",
- *     dataType: 'object'
+ *     dataType: layer.Query.ObjectDataType
  * })
  * ```
  *
- * The property defaults to 'instance'.  Instances support methods and let you subscribe to events for direct notification
+ * The property defaults to layer.Query.InstanceDataType.  Instances support methods and let you subscribe to events for direct notification
  * of changes to any of the results of your query:
  *
  * ```javascript
@@ -56,7 +56,7 @@
  * });
  * ```
  *
- * A value of 'object' will cause the data to be an array of immutable objects rather than instances.  One can still get an instance from the POJO:
+ * A value of layer.Query.ObjectDataType will cause the data to be an array of immutable objects rather than instances.  One can still get an instance from the POJO:
  *
  * ```javascript
  * var m = client.getMessage(query.data[0].id);
@@ -167,11 +167,9 @@ const LayerError = require('./layer-error');
 const Util = require('./client-utils');
 const Logger = require('./logger');
 
-// Server imposes a 100 item limit
-const MAX_PAGE_SIZE = 100;
 const CONVERSATION = 'Conversation';
 const MESSAGE = 'Message';
-const findConvIdRegex = new RegExp(/^.*['"](.*?)['"].*$/);
+const findConvIdRegex = new RegExp(/^conversation.id\s*=\s*['"]((temp_)?layer:\/\/\/conversations\/.{8}-.{4}-.{4}-.{4}-.{12})['"]$/);
 
 class Query extends Root {
 
@@ -183,9 +181,16 @@ class Query extends Root {
     } else {
       options = arguments[0];
     }
+    if ('paginationWindow' in options) {
+      const paginationWindow = options.paginationWindow;
+      options.paginationWindow = Math.min(Query.MaxPageSize, options.paginationWindow);
+      if (options.paginationWindow !== paginationWindow) {
+        Logger.warn(`paginationWindow value ${paginationWindow} in Query constructor excedes Query.MaxPageSize of ${Query.MaxPageSize}`);
+      }
+    }
+
     super(options);
     this.data = [];
-    this._sentPaginationWindow = 0;
     this._initialPaginationWindow = this.paginationWindow;
     if (!this.client) throw new Error(LayerError.dictionary.clientMissing);
     this.client.on('all', this._handleChangeEvents, this);
@@ -203,24 +208,6 @@ class Query extends Root {
     this.data = null;
     super.destroy();
   }
-
-  /**
-   * Once the Query support is on the server, outputs parameters for that service.
-   *
-   * @method _toQueryObject
-   * @protected
-   * @return {Object}
-   *
-  _toQueryObject() {
-    return {
-      model: this.model,
-      pagination_window: this.paginationWindow,
-      predicate: this.predicate,
-      return_type: this.returnType,
-      // sort_descriptors: this.sortBy
-    };
-  }
-  */
 
   /**
    * Updates properties of the Query.
@@ -249,7 +236,10 @@ class Query extends Root {
     optionsBuilt = (typeof options.build === 'function') ? options.build() : options;
 
     if ('paginationWindow' in optionsBuilt && this.paginationWindow !== optionsBuilt.paginationWindow) {
-      this.paginationWindow = optionsBuilt.paginationWindow;
+      this.paginationWindow = Math.min(Query.MaxPageSize + this.size, optionsBuilt.paginationWindow);
+      if (this.paginationWindow < optionsBuilt.paginationWindow) {
+        Logger.warn(`paginationWindow value ${optionsBuilt.paginationWindow} in Query.update() increases size greater than Query.MaxPageSize of ${Query.MaxPageSize}`);
+      }
       needsRefresh = true;
     }
     if ('predicate' in optionsBuilt && this.predicate !== optionsBuilt.predicate) {
@@ -278,14 +268,14 @@ class Query extends Root {
    * @private
    */
   _reset() {
+    this.totalSize = 0;
     const data = this.data;
     this.data = [];
     this.client._checkCache(data);
     this.isFiring = false;
     this._predicate = null;
-    this._sentPaginationWindow = 0;
     this.paginationWindow = this._initialPaginationWindow;
-    this.trigger('change', {data: [], type: 'reset'});
+    this._triggerChange({data: [], type: 'reset'});
   }
 
   /**
@@ -306,22 +296,18 @@ class Query extends Root {
    * @private
    */
   _run() {
-    // Find the number of items we need to request
-    const pageSize = Math.min(
-      this.paginationWindow - this._sentPaginationWindow, MAX_PAGE_SIZE);
+    // Find the number of items we need to request.
+    const pageSize = Math.min(this.paginationWindow - this.size, Query.MaxPageSize);
 
     // If there is a reduction in pagination window, then this variable will be negative, and we can shrink
     // the data.
-    // TODO: Figure out if we need a better 'change' event that tells people what REALLY changed.
     if (pageSize < 0) {
       const removedData = this.data.slice(this.paginationWindow);
       this.data = this.data.slice(0, this.paginationWindow);
       this.client._checkCache(removedData);
-      this._triggerAsync('change', {data: []});
-      this._sentPaginationWindow = this.paginationWindow;
+      this._triggerAsync('change', { data: [] });
     } else if (pageSize === 0) {
-      // do nothing; needed because _processRunResults calls run() and lets run
-      // decide if there is anything more to be done.
+      // No need to load 0 results.
     } else if (this.model === CONVERSATION) {
       this._runConversation(pageSize);
     } else if (this.model === MESSAGE && this.predicate) {
@@ -345,19 +331,38 @@ class Query extends Root {
 
     this.isFiring = true;
     const firingRequest = this._firingRequest = `conversations?sort_by=${sortBy}&page_size=${pageSize}${fromId}`;
-    this._allResultsLoaded = false;
     this.client.xhr({
       url: firingRequest,
       method: 'GET',
       sync: false,
     }, results => this._processRunResults(results, firingRequest));
-    this._sentPaginationWindow += pageSize;
   }
 
   _getSortField() {
     if (this.model === MESSAGE) return 'position';
     if (this.sortBy && this.sortBy[0] && this.sortBy[0]['lastMessage.sentAt']) return 'last_message';
     return 'created_at';
+  }
+
+  /**
+   * Extract the Conversation's UUID from the predicate... or returned the cached value
+   * @method _getConversationUUID
+   * @private
+   */
+  _getConversationPredicateIds() {
+    if (this.predicate.match(findConvIdRegex)) {
+      const conversationId = this.predicate.replace(findConvIdRegex, '$1');
+
+      // We will already have a this._predicate if we are paging; else we need to extract the UUID from
+      // the conversationId.
+      const uuid = (this._predicate || conversationId).replace(/^(temp_)?layer\:\/\/\/conversations\//, '');
+      if (uuid) {
+        return {
+          uuid: uuid,
+          id: conversationId,
+        };
+      }
+    }
   }
 
   /**
@@ -372,45 +377,51 @@ class Query extends Root {
     // which is the id of the last result.
     const lastMessage = this.data[this.data.length - 1];
     let fromId = (lastMessage && !lastMessage.id.match(/temp_/) ? '&from_id=' + lastMessage.id : '');
+    const predicateIds = this._getConversationPredicateIds();
 
-    // Do nothing if the predicate is not a properly formed "conversation.id = 'layer:///conversations/uuid'" query
-    if (this.predicate.match(findConvIdRegex)) {
-      const conversationId = this.predicate.replace(findConvIdRegex, '$1');
+    // Do nothing if we don't have a conversation to query on
+    if (predicateIds) {
+      const conversationId = 'layer:///conversations/' + predicateIds.uuid;
+      if (!this._predicate) this._predicate = predicateIds.id;
+      const conversation = this.client.getConversation(conversationId);
 
-      // We will already have a this._predicate if we are paging; else we need to extract the UUID from
-      // the conversationId.
-      const uuid = (this._predicate || conversationId).replace(/^layer\:\/\/\/conversations\//,'');
+      // If the only Message is the Conversation's lastMessage, then we probably got this
+      // result from `GET /conversations`, and not from `GET /messages`.  Get ALL Messages,
+      // not just messages after the `lastMessage` if we've never received any messages from
+      // `GET /messages` (safety code, not required code).  This also means that the first
+      // Query gets MAX_PAGE_SIZE results instead of MAX_PAGE_SIZE + 1 results.
+      if (conversation && conversation.lastMessage &&
+          lastMessage && lastMessage.id === conversation.lastMessage.id) {
+            fromId = '';
+      }
 
-      // Do nothing if we don't identify something we think is the UUID
-      if (uuid) {
-        if (!this._predicate) this._predicate = conversationId;
-        const conversation = this.client.getConversation(conversationId);
-        if (conversation && conversation.lastMessage && lastMessage && lastMessage.id === conversation.lastMessage.id) fromId = '';
-        const newRequest = `conversations/${uuid}/messages?page_size=${pageSize}${fromId}`;
+      // If the last message we have loaded is already the Conversation's lastMessage, then just request data without paging,
+      // common occurence when query is populated with only a single result: conversation.lastMessage.
+      //if (conversation && conversation.lastMessage && lastMessage && lastMessage.id === conversation.lastMessage.id) fromId = '';
+      const newRequest = `conversations/${predicateIds.uuid}/messages?page_size=${pageSize}${fromId}`;
 
-        // Don't query on temporary ids, nor repeat still firing queries
-        if (!this._predicate.match(/temp_/) && newRequest !== this._firingRequest) {
-          this.isFiring = true;
-          this._firingRequest = newRequest;
-          this._allResultsLoaded = false;
-          this.client.xhr({
-            url: newRequest,
-            method: 'GET',
-            sync: false,
-          }, results => this._processRunResults(results, newRequest));
-          this._sentPaginationWindow += pageSize;
-        }
-        if (this.data.length === 0) {
-          if (conversation && conversation.lastMessage) {
-            this.data = [this._getData(conversation.lastMessage)];
-            // Trigger the change event
-            this.trigger('change', {
-              type: 'data',
-              data: this._getData(conversation.lastMessage),
-              query: this,
-              target: this.client,
-            });
-          }
+      // Don't query on temporary ids, nor repeat still firing queries
+      if (!this._predicate.match(/temp_/) && newRequest !== this._firingRequest) {
+        this.isFiring = true;
+        this._firingRequest = newRequest;
+        this.client.xhr({
+          url: newRequest,
+          method: 'GET',
+          sync: false,
+        }, results => this._processRunResults(results, newRequest));
+      }
+
+      // If there are no results, then its a new query; automatically populate it with the Conversation's lastMessage.
+      if (this.data.length === 0) {
+        if (conversation && conversation.lastMessage) {
+          this.data = [this._getData(conversation.lastMessage)];
+          // Trigger the change event
+          this._triggerChange({
+            type: 'data',
+            data: this._getData(conversation.lastMessage),
+            query: this,
+            target: this.client,
+          });
         }
       }
     } else if (!this.predicate.match(/['"]/)) {
@@ -433,21 +444,9 @@ class Query extends Root {
     this._firingRequest = '';
     if (results.success) {
       this._appendResults(results);
-
-      // Continue paging until we've loaded the requested amount of data
-      if (this._sentPaginationWindow !== this.paginationWindow) {
-        const totalSize = results.xhr.getResponseHeader('Layer-Count');
-        const totalSizeNumb = Number(totalSize);
-
-        // There is no more data to load
-        if (totalSizeNumb <= this._sentPaginationWindow) {
-          this._allResultsLoaded = true;
-        } else {
-          this._run();
-        }
-      }
+      this.totalSize = results.xhr.getResponseHeader('Layer-Count');
     } else {
-      this.trigger('error', {error: results.data});
+      this.trigger('error', { error: results.data });
     }
   }
 
@@ -466,7 +465,7 @@ class Query extends Root {
     const newResults = results.data.filter(item => this._getIndex(item.id) === -1);
 
     // Update this.data
-    if (this.dataType === 'object') {
+    if (this.dataType === Query.ObjectDataType) {
       this.data = [].concat(this.data);
     }
     const data = this.data;
@@ -483,7 +482,7 @@ class Query extends Root {
 
 
     // Trigger the change event
-    this.trigger('change', {
+    this._triggerChange({
       type: 'data',
       data: results.data.map(item => this._getData(this.client._getObject(item.id))),
       query: this,
@@ -500,7 +499,7 @@ class Query extends Root {
    * @return {Object} - Conversation or Message instance or Object
    */
   _getData(item) {
-    if (this.dataType === 'object') {
+    if (this.dataType === Query.ObjectDataType) {
       return item.toObject();
     }
     return item;
@@ -603,7 +602,7 @@ class Query extends Root {
 
     // If its an ID change (from temp to non-temp id) make sure to update our data.
     // If dataType is an instance, its been updated for us.
-    if (this.dataType === 'object') {
+    if (this.dataType === Query.ObjectDataType) {
       const idChanges = evt.getChangesFor('id');
       if (idChanges.length) {
         index = this._getIndex(idChanges[0].oldValue);
@@ -619,7 +618,7 @@ class Query extends Root {
       const sortField = this._getSortField();
       const reorder = evt.hasProperty('lastMessage') && sortField === 'last_message';
 
-      if (this.dataType === 'object') {
+      if (this.dataType === Query.ObjectDataType) {
         if (!reorder) {
           // Replace the changed Conversation with a new immutable object
           this.data = [
@@ -646,7 +645,7 @@ class Query extends Root {
       }
 
       // Trigger a 'property' event
-      this.trigger('change', {
+      this._triggerChange({
         type: 'property',
         target: this._getData(evt.target),
         query: this,
@@ -698,15 +697,16 @@ class Query extends Root {
       });
 
       // Whether sorting by last_message or created_at, new results go at the top of the list
-      if (this.dataType === 'object') {
+      if (this.dataType === Query.ObjectDataType) {
         this.data = [].concat(data);
       }
+      this.totalSize += list.length;
 
       // Trigger an 'insert' event for each item added;
       // typically bulk inserts happen via _appendResults().
       list.forEach((conversation) => {
         const item = this._getData(conversation);
-        this.trigger('change', {
+        this._triggerChange({
           type: 'insert',
           index: this.data.indexOf(item),
           target: item,
@@ -716,22 +716,29 @@ class Query extends Root {
     }
   }
 
+
   _handleConversationRemoveEvent(evt) {
+    const removed = [];
     evt.conversations.forEach(conversation => {
       const index = this._getIndex(conversation.id);
       if (index !== -1) {
-        if (this.dataType === 'object') {
+        removed.push({ data: conversation, index: index });
+        if (this.dataType === Query.ObjectDataType) {
           this.data = [...this.data.slice(0, index), ...this.data.slice(index + 1)];
         } else {
           this.data.splice(index, 1);
         }
-        this.trigger('change', {
-          type: 'remove',
-          index: index,
-          target: this._getData(conversation),
-          query: this,
-        });
       }
+    });
+
+    this.totalSize -= removed.length;
+    removed.forEach(removedObj => {
+      this._triggerChange({
+        type: 'remove',
+        index: removedObj.index,
+        target: this._getData(removedObj.data),
+        query: this,
+      });
     });
   }
 
@@ -803,7 +810,7 @@ class Query extends Root {
     if (newIndex !== index) {
       newData.splice(newIndex, 0, this._getData(evt.target));
       this.data = newData;
-      this.trigger('change', {
+      this._triggerChange({
         type: 'property',
         target: this._getData(evt.target),
         query: this,
@@ -824,14 +831,14 @@ class Query extends Root {
     }
 
     if (evt.target.conversationId === this._predicate && index !== -1) {
-      if (this.dataType === 'object') {
+      if (this.dataType === Query.ObjectDataType) {
         this.data = [
           ...this.data.slice(0, index),
           evt.target.toObject(),
           ...this.data.slice(index + 1),
         ];
       }
-      this.trigger('change', {
+      this._triggerChange({
         type: 'property',
         target: evt.target.toObject(),
         query: this,
@@ -851,16 +858,18 @@ class Query extends Root {
 
     // Add them to our result set and trigger an event for each one
     if (list.length) {
-      const data = this.data = this.dataType === 'object' ? [].concat(this.data) : this.data;
+      const data = this.data = this.dataType === Query.ObjectDataType ? [].concat(this.data) : this.data;
       list.forEach(item => {
         const index = this._getInsertMessageIndex(item, data);
         data.splice(index, 0, item);
       });
 
+      this.totalSize += list.length;
+
       // Index calculated above may shift after additional insertions.  This has
       // to be done after the above insertions have completed.
       list.forEach(item => {
-        this.trigger('change', {
+        this._triggerChange({
           type: 'insert',
           index: this.data.indexOf(item),
           target: item,
@@ -871,10 +880,12 @@ class Query extends Root {
   }
 
   _handleMessageRemoveEvent(evt) {
+    const removed = [];
     evt.messages.forEach(message => {
       const index = this._getIndex(message.id);
       if (index !== -1) {
-        if (this.dataType === 'object') {
+        removed.push({ data: message, index: index });
+        if (this.dataType === Query.ObjectDataType) {
           this.data = [
             ...this.data.slice(0, index),
             ...this.data.slice(index + 1),
@@ -882,16 +893,87 @@ class Query extends Root {
         } else {
           this.data.splice(index, 1);
         }
-        this.trigger('change', {
-          type: 'remove',
-          target: message.toObject(),
-          index: index,
-          query: this,
-        });
       }
     });
+
+    this.totalSize -= removed.length;
+    removed.forEach(removedObj => {
+      this._triggerChange({
+        type: 'remove',
+        target: this._getData(removedObj.data),
+        index: removedObj.index,
+        query: this,
+      });
+    });
+  }
+
+  _triggerChange(evt) {
+     this.trigger('change', evt);
+     this.trigger('change:' + evt.type, evt);
   }
 }
+
+
+Query.prefixUUID = 'layer:///queries/';
+
+/**
+ * Query for Conversations.
+ *
+ * Use this value in the model property.
+ * @type {string}
+ * @static
+ */
+Query.Conversation = CONVERSATION;
+
+/**
+ * Query for Messages.
+ *
+ * Use this value in the model property.
+ * @type {string}
+ * @static
+ */
+Query.Message = MESSAGE;
+
+/**
+ * Get data as POJOs/immutable objects.
+ *
+ * Your Query data and events will provide Messages/Conversations as objects.
+ * @type {string}
+ * @static
+ */
+Query.ObjectDataType = 'object';
+
+/**
+ * Get data as instances of layer.Message and layer.Conversation.
+ *
+ * Your Query data and events will provide Messages/Conversations as instances.
+ * @type {string}
+ * @static
+ */
+Query.InstanceDataType = 'instance';
+
+/**
+ * Set the maximum page size for queries.
+ * @type {number}
+ * @static
+ */
+Query.MaxPageSize = 100;
+
+/**
+ * Access the number of results currently loaded
+ * @type {Number}
+ */
+Object.defineProperty(Query.prototype, 'size', {
+  enumerable: true,
+  get: function get() {
+    return !this.data ? 0 : this.data.length;
+  },
+});
+
+/** Access the total number of results on the server.  Will be 0 until the first query has successfully loaded results.
+ * @type {Number}
+ */
+Query.prototype.totalSize = 0;
 
 
 /**
@@ -938,7 +1020,7 @@ Query.prototype.returnType = 'object';
  * Should the data be an array of 'instance' or 'object'?
  * @type {String}
  */
-Query.prototype.dataType = 'instance';
+Query.prototype.dataType = Query.InstanceDataType;
 
 /**
  * Number of results from the server to request/cache.
@@ -983,12 +1065,6 @@ Query.prototype.sortBy = null;
 Query.prototype._initialPaginationWindow = 100;
 
 /**
- * Are all results from the server loaded or are there more results to page through?
- * @type {Boolean}
- */
-Query.prototype._allResultsLoaded = false;
-
-/**
  * Your Query's WHERE clause.
  *
  * Currently, the only query supported is "conversation.id = 'layer:///conversations/uuid'"
@@ -1024,34 +1100,45 @@ Query.prototype.isFiring = false;
  */
 Query.prototype._firingRequest = '';
 
-Query.prefixUUID = 'layer:///queries/';
-
-/**
- * Query for Conversations.
- *
- * Use this value in the model property.
- * @type {string}
- * @static
- */
-Query.Conversation = CONVERSATION;
-
-/**
- * Query for Messages.
- *
- * Use this value in the model property.
- * @type {string}
- * @static
- */
-Query.Message = MESSAGE;
-
 Query._supportedEvents = [
   /**
-   * The query data has changed; either new results added,
-   * results removed, or changes in properties of
-   * existing results.
+   * The query data has changed; any change event will cause this event to trigger.
    * @event change
    */
   'change',
+
+  /**
+   * A new page of data has been loaded from the server
+   * @event 'change:data'
+   */
+  'change:data',
+
+  /**
+   * All data for this query has been reset due to a change in the Query predicate.
+   * @event 'change:reset'
+   */
+  'change:reset',
+
+  /**
+   * An item of data within this Query has had a property change its value.
+   * @event 'change:property'
+   */
+  'change:property',
+
+  /**
+   * A new item of data has been inserted into the Query. Not triggered by loading
+   * a new page of data from the server, but is triggered by locally creating a matching
+   * item of data, or receiving a new item of data via websocket.
+   * @event 'change:insert'
+   */
+  'change:insert',
+
+  /**
+   * An item of data has been removed from the Query. Not triggered for every removal, but
+   * is triggered by locally deleting a result, or receiving a report of deletion via websocket.
+   * @event 'change:remove'
+   */
+  'change:remove',
 
   /**
    * The query data failed to load from the server.
