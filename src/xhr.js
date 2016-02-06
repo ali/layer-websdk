@@ -208,12 +208,15 @@ module.exports = (request, callback) => {
       }
     }
   }
-  //console.trace('SENDING');
-  //console.dir(request);
-  if (method === 'GET') {
-    req.send();
-  } else {
-    req.send(data);
+
+  try {
+    if (method === 'GET') {
+      req.send();
+    } else {
+      req.send(data);
+    }
+  } catch(e) {
+    // do nothing
   }
 };
 

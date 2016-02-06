@@ -11,7 +11,7 @@
  *
  * @class layer.LayerError
  */
-
+const Logger = require('./logger');
 class LayerError {
   constructor(options) {
     if (options instanceof LayerError) {
@@ -67,15 +67,13 @@ class LayerError {
   }
 
   /**
-   * Writes the error to console.error
+   * Log the errors
    *
    * @method log
    * @deprecated see layer.Logger
    */
   log() {
-    if (!LayerError.disableLogging) {
-      console.error('Layer-Error: ' + this.toString());
-    }
+    Logger.error('Layer-Error: ' + this.toString());
   }
 
 }
@@ -135,16 +133,6 @@ LayerError.prototype.data = null;
  * @type {XMLHttpRequest}
  */
 LayerError.prototype.xhr = null;
-
-/**
- * Logging is disabled.
- *
- * Change this to true/false to change the behavior of the log() method which
- * calls `console.error()`
- * @type {Boolean}
- * @static
- */
-LayerError.disableLogging = false;
 
 /**
  * Dictionary of error messages
