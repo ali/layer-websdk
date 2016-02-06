@@ -857,7 +857,7 @@ describe("The Client Authenticator Class", function() {
       it("Should update the loggers level", function() {
         client.logLevel = 100;
         expect(client.logLevel).toEqual(100);
-        client.logLevel = 0;
+        client.logLevel = 1;
       });
     });
 });

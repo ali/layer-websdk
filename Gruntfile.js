@@ -7,43 +7,6 @@ var version = require('./package.json').version;
 var HTML_HEAD = fs.readFileSync('./jsduck-config/head.html').toString();
 var CSS = fs.readFileSync('./jsduck-config/style.css').toString();
 
-/* Insure that browserify and babelify generated code does not get counted against our test coverage */
-var through = require('through');
-function fixBrowserifyForIstanbul(file) {
-    var data = '';
-    return through(write, end);
-
-    function write (buf) {
-        data += buf;
-    }
-    function end () {
-      var lines = data.split(/\n/);
-
-      if (file.match(/\/user.js$/)) {
-        lines = lines.map(function(line) {
-          if (line.match(/^\s*\*/)) return line;
-          return "/* istanbul ignore next */ " + line;
-        });
-      } else {
-        for (var i = 0; i < lines.length; i++) {
-          if (lines[i].match(/\/\*\*/)) {
-            break;
-          }
-
-          lines[i] = lines[i].replace(/\sfunction/g, "/* istanbul ignore next */ function");
-          lines[i] = lines[i].replace(/\(function/g, "/* istanbul ignore next */ (function");
-          lines[i] = lines[i].replace(/(\{|\}) if /g, "$1 /* istanbul ignore next */ if ");
-          lines[i] = lines[i].replace(/; if /g, "; /* istanbul ignore next */ if ");
-          lines[i] = lines[i].replace(/(\{|\}) for /g, "$1 /* istanbul ignore next */ for ");
-          lines[i] = lines[i].replace(/; for /g, "; /* istanbul ignore next */ for ");
-        }
-      }
-
-       this.queue(lines.join('\n'));
-       this.queue(null);
-    }
-}
-
 var browsers = [
   {
     browserName: "internet explorer",
@@ -97,12 +60,9 @@ module.exports = function (grunt) {
 
   grunt.initConfig({
     pkg: grunt.file.readJSON('package.json'),
-
-    // Build tasks
-    babel: {
+    "babel": {
       options: {
-        sourceMap: 'inline',
-        presets: ['es2015']
+        sourceMap: false
       },
       dist: {
         files: {
@@ -135,31 +95,73 @@ module.exports = function (grunt) {
         }
       }
     },
+    jsduck: {
+      build: {
+        src: ["lib/**.js", "lib/typing-indicators/**.js"],
+        dest: 'docs',
+        options: {
+          'builtin-classes': false,
+          'warnings': ['-no_doc', '-dup_member', '-link_ambiguous'],
+          'external': ['XMLHttpRequest', 'Blob', 'Websocket', 'KeyboardEvent'],
+          'title': 'Layer Web SDK - API Documentation',
+          'categories': ['jsduck-config/categories.json'],
+          'head-html': HTML_HEAD,
+          'css': [CSS],
+          'footer': 'Layer Web SDK v' + version
+        }
+      }
+    },
+    jasmine: {
+      options: {
+        helpers: ['test/lib/mock-ajax.js', 'test/specs/responses.js', 'test/lib/browser-utils.js'],
+        specs: ['test/specs/unit/*Spec.js', 'test/specs/unit/messages/*Spec.js'],
+        summary: true
+      },
+      debug: {
+        src: ["build/client.debug.js"]
+      },
+      coverage: {
+        src: ["coverage/index.js"],
+        options: {
+          summary: false,
+          display: "none",
+          template: require('grunt-template-jasmine-istanbul'),
+          templateOptions: {
+            coverage: 'coverage/data/coverage.json',
+            report: [{ type: "text", options: { dir: 'coverage/report/text' } },
+              { type: "html", options: { dir: 'coverage/report' } }],
+
+            // Thresholds can be improved if we test non-babelified code
+            thresholds: {
+              lines: 75,
+              statements: 75,
+              branches: 75,
+              functions: 90
+            }
+          }
+        }
+      }
+    },
     browserify: {
       options: {
         separator: ';'
       },
       debug: {
         files: {
-          'build/client.debug.js': ['index-es6.js']
+          'build/client.build.debug.js': ['index.js']
         },
         options: {
-          transform: [['babelify', {
-            presets: ['es2015']}]],
           browserifyOptions: {
-            standalone: 'layer',
             debug: true
           }
         }
       },
       build: {
         files: {
-          'build/client.build.js': ['index-es6.js']
+          'build/client.build.js': ['index.js']
         },
         options: {
-          transform: [['babelify', {presets: ['es2015'], sourceMaps: false}]],
           browserifyOptions: {
-            standalone: 'layer',
             debug: false
           }
         }
@@ -169,17 +171,28 @@ module.exports = function (grunt) {
           'coverage/index.js': ['index.js']
         },
         options: {
-          transform: [[fixBrowserifyForIstanbul], ["istanbulify"]],
-          browserifyOptions: {
-            standalone: false,
-            debug: false
-          }
+          transform: ["istanbulify"]
         }
       }
     },
     remove: {
+      debug: {
+        fileList: ['build/client.build.debug.js']
+      },
       build: {
-        fileList: ['build/client.build.js']
+        fileList: ['build/client.build.js', 'build/client.umd.js']
+      }
+    },
+    watch: {
+      debug: {
+        files: ['src/**', "Gruntfile.js"],
+        tasks: ['debug']
+      }
+    },
+    copy: {
+      fixIstanbul: {
+        src: "grunt-template-jasmine-istanbul_src-main-js-template.js",
+        dest: "node_modules/grunt-template-jasmine-istanbul/src/main/js/template.js"
       }
     },
     uglify: {
@@ -208,70 +221,26 @@ module.exports = function (grunt) {
       },
       build: {
         files: {
-          'build/client.min.js': ['build/client.build.js']
+          'build/client.min.js': ['build/client.umd.js']
         }
       }
     },
-    watch: {
+    umd: {
       debug: {
-        files: ['src/**', "Gruntfile.js"],
-        tasks: ['debug']
-      }
-    },
-
-    // Testing and Coverage tasks
-    jasmine: {
-      options: {
-        helpers: ['test/lib/mock-ajax.js', 'test/specs/responses.js', 'test/lib/browser-utils.js'],
-        specs: ['test/specs/unit/*Spec.js', 'test/specs/unit/messages/*Spec.js'],
-        summary: true
-      },
-      debug: {
-        src: ["build/client.debug.js"]
-      },
-      coverage: {
-        src: ["coverage/index.js"],
         options: {
-          summary: false,
-          display: "none",
-          template: require('grunt-template-jasmine-istanbul'),
-          templateOptions: {
-            coverage: 'coverage/data/coverage.json',
-            ignoreFiles: ["coverage/index.js", "lib/user.js"],
-            report: [{ type: "text", options: { dir: 'coverage/report/text' } },
-              { type: "html", options: { dir: 'coverage/report' } }]
-
-          }
+          src: 'build/client.build.debug.js',
+          dest: 'build/client.debug.js',
+          objectToExport: 'layer'
         }
-      }
-    },
-    // Adds support for the ignoreFiles parameter, which is needed for removing generated files from the result
-    copy: {
-      fixIstanbul: {
-        src: "grunt-template-jasmine-istanbul_src-main-js-template.js",
-        dest: "node_modules/grunt-template-jasmine-istanbul/src/main/js/template.js"
-      }
-    },
-
-    // Documentation
-    jsduck: {
+      },
       build: {
-        src: ["lib/**.js", "lib/typing-indicators/**.js"],
-        dest: 'docs',
         options: {
-          'builtin-classes': false,
-          'warnings': ['-no_doc', '-dup_member', '-link_ambiguous'],
-          'external': ['XMLHttpRequest', 'Blob', 'Websocket', 'KeyboardEvent'],
-          'title': 'Layer Web SDK - API Documentation',
-          'categories': ['jsduck-config/categories.json'],
-          'head-html': HTML_HEAD,
-          'css': [CSS],
-          'footer': 'Layer Web SDK v' + version
+          src: 'build/client.build.js',
+          dest: 'build/client.umd.js',
+          objectToExport: 'layer'
         }
-      }
+      },
     },
-
-    // Saucelabs Tests
     connect: {
 			server: {
         options: {
@@ -292,31 +261,22 @@ module.exports = function (grunt) {
     },
   });
 
-  // Building
   grunt.loadNpmTasks('grunt-babel');
-  grunt.loadNpmTasks('grunt-browserify');
-  grunt.loadNpmTasks('grunt-contrib-watch');
-  grunt.loadNpmTasks('grunt-contrib-uglify');
-  grunt.loadNpmTasks('grunt-remove');
-  grunt.registerTask('debug', ['browserify:debug']);
-  grunt.registerTask('build', ['browserify:build', 'uglify', 'remove:build']);
-  grunt.registerTask('prepublish', ['babel:dist']);
-
-  // Documentation
-  grunt.loadNpmTasks('grunt-jsduck');
-  grunt.registerTask('docs', ['babel:dist', 'jsduck']);
-
-  // Testing
-  grunt.loadNpmTasks('grunt-contrib-jasmine');
-  grunt.registerTask('test', ['debug', 'jasmine:debug']);
-
-
-  // Coverage Tests; warning: First run of grunt coverage will NOT use the copied istanbul fix; only the subsequent runs will.
   grunt.loadNpmTasks('grunt-contrib-copy');
-  grunt.registerTask('coverage', ['copy:fixIstanbul', 'babel:dist', 'browserify:coverage', 'jasmine:coverage']);
-
-  // Saucelabs Tests
-  grunt.loadNpmTasks('grunt-saucelabs');
+  grunt.loadNpmTasks('grunt-browserify');
+  grunt.loadNpmTasks('grunt-contrib-jasmine');
+  grunt.loadNpmTasks('grunt-contrib-watch');
+  grunt.loadNpmTasks('grunt-jsduck');
+  grunt.loadNpmTasks('grunt-contrib-uglify');
+  grunt.loadNpmTasks('grunt-umd');
   grunt.loadNpmTasks('grunt-contrib-connect');
-  grunt.registerTask('sauce', ['connect', 'saucelabs-jasmine']);
+  grunt.loadNpmTasks('grunt-saucelabs');
+  grunt.loadNpmTasks('grunt-remove');
+
+  grunt.registerTask('test', ['debug', 'jasmine:debug']);
+  grunt.registerTask('docs', ['browserify:build', 'jsduck']);
+  grunt.registerTask('debug', ['babel:dist', 'browserify:debug', 'umd:debug', 'remove:debug']);
+  grunt.registerTask('build', ['babel:dist', 'browserify:build', 'umd:build', 'uglify', 'remove:build']);
+  grunt.registerTask('coverage', ['copy:fixIstanbul', 'babel:dist', 'browserify:coverage', 'jasmine:coverage']);
+	grunt.registerTask('sauce', ['connect', 'saucelabs-jasmine']);
 };
