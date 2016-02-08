@@ -391,6 +391,10 @@ class Client extends ClientAuth {
         this._triggerAsync('messages:notify', { message });
         message._notify = false;
       }
+      const conversation = message.getConversation();
+      if (conversation && (!conversation.lastMessage || conversation.lastMessage.position < message.position)) {
+        conversation.lastMessage = message;
+      }
     }
   }
 

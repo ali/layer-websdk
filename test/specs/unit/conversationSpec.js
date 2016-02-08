@@ -1333,8 +1333,23 @@ describe("The Conversation Class", function() {
         });
     });
 
+    describe("The __updateLastMessage() method", function() {
+      it("Should trigger an event if Message ID changes", function() {
+        spyOn(conversation, "_triggerAsync");
+        conversation.__updateLastMessage({id: "1"}, {id: "2"});
+        expect(conversation._triggerAsync).toHaveBeenCalledWith("conversations:change", {
+          property: "lastMessage",
+          newValue: {id: "1"},
+          oldValue: {id: "2"}
+        });
+      });
 
-
+      it("Should not trigger an event if Message ID did not change", function() {
+        spyOn(conversation, "_triggerAsync");
+        conversation.__updateLastMessage({id: "1"}, {id: "1"});
+        expect(conversation._triggerAsync).not.toHaveBeenCalled();
+      });
+    });
 
 
 
