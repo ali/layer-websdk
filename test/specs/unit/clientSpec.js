@@ -545,6 +545,32 @@ describe("The Client class", function() {
             expect(client.getMessage(m.id)).toBe(message);
             expect(client._triggerAsync).not.toHaveBeenCalled();
         });
+
+        it("Should update conversation lastMessage if position is greater than last Position", function() {
+          // Setup
+          conversation.lastMessage = {position: 5};
+          message.position = 10;
+          client._messagesHash = {};
+
+
+          // Run
+          client._addMessage(message);
+
+          // Posttest
+          expect(conversation.lastMessage).toBe(message);
+       });
+
+       it("Should update conversation lastMessage if no lastMessage", function() {
+          // Setup
+          conversation.lastMessage = null;
+          client._messagesHash = {};
+
+          // Run
+          client._addMessage(message);
+
+          // Posttest
+          expect(conversation.lastMessage).toBe(message);
+       });
     });
 
     describe("The _removeMessage() method", function() {

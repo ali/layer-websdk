@@ -978,6 +978,7 @@ class Conversation extends Syncable {
    * @param  {layer.Message} oldValue
    */
   __updateLastMessage(newValue, oldValue) {
+    if (newValue && oldValue && newValue.id === oldValue.id) return;
     this._triggerAsync('conversations:change', {
       property: 'lastMessage',
       newValue: newValue,
