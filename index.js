@@ -1,7 +1,7 @@
 /* istanbul ignore next */
-"use strict";
-
 if (!global.layer) global.layer = {};
+
+/* istanbul ignore next */
 if (!global.layer.plugins) global.layer.plugins = {};
 
 var layer = global.layer;
