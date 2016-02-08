@@ -42,10 +42,10 @@ var client = new layer.Client({
 });
 ```
 
-### Github
+### From source
 
-    > git clone git@github.com:layerhq/layer-websdk.git
-    > cd layer-websdk
+Download the latest SDK release [Source code](https://github.com/layerhq/layer-websdk/releases/latest) archive, extract the files and run the following commands from the extracted project folder:
+
     > npm install
     > grunt build
 
