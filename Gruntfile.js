@@ -152,7 +152,7 @@ module.exports = function (grunt) {
         },
         options: {
           browserifyOptions: {
-            debug: true
+            debug: false
           }
         }
       },

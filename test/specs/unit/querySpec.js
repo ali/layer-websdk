@@ -2,7 +2,7 @@
 describe("The Query Class", function() {
     var appId = "Fred's App";
 
-    var conversation,
+    var conversation, conversationUUID,
         conversation2,
         message,
         client,
@@ -105,6 +105,14 @@ describe("The Query Class", function() {
             // Posttest
             expect(query._handleConversationEvents).toHaveBeenCalledWith(jasmine.any(layer.LayerEvent));
         });
+
+        it("Should force paginationWindow to acceptable value", function() {
+          var query = new layer.Query({
+            client: client,
+            paginationWindow: 12345
+          });
+          expect(query.paginationWindow).toEqual(layer.Query.MaxPageSize);
+        });
     });
 
     describe("The destroy() method", function() {
@@ -147,6 +155,18 @@ describe("The Query Class", function() {
             expect(query.paginationWindow).toEqual(30);
             expect(query._reset).not.toHaveBeenCalled();
             expect(query._run).toHaveBeenCalledWith();
+        });
+
+        it("Should not update the paginationWindow to more than MAX_PAGE_SIZE greater than current size", function() {
+            spyOn(query, "_reset");
+            spyOn(query, "_run");
+            query.data = [conversation, conversation2];
+
+            // Run
+            query.update({paginationWindow: 500});
+
+            // Posttest
+            expect(query.paginationWindow).toEqual(layer.Query.MaxPageSize + query.data.length);
         });
 
         it("Should update the predicate", function() {
@@ -235,9 +255,9 @@ describe("The Query Class", function() {
         });
 
         it("Should trigger a reset change", function() {
-            spyOn(query, "trigger");
+            spyOn(query, "_triggerChange");
             query._reset();
-            expect(query.trigger).toHaveBeenCalledWith('change', {data: [], type: 'reset'});
+            expect(query._triggerChange).toHaveBeenCalledWith({data: [], type: 'reset'});
         });
     });
 
@@ -279,7 +299,6 @@ describe("The Query Class", function() {
         });
 
         it("Should decrease page size without firing any requests", function() {
-            query._sentPaginationWindow = 20;
             query.paginationWindow = 10;
             for (var i = 0; i < 20; i++) {
                 query.data.push(client.createConversation({
@@ -309,7 +328,7 @@ describe("The Query Class", function() {
             spyOn(query, "_runMessage");
             spyOn(client, "_checkCache");
             spyOn(query, "trigger");
-            query._sentPaginationWindow = 1;
+            query.data = [message];
 
             // Run
             query._run();
@@ -328,7 +347,7 @@ describe("The Query Class", function() {
             spyOn(query, "_runMessage");
             spyOn(client, "_checkCache");
             spyOn(query, "trigger");
-            query._sentPaginationWindow = 1;
+            query.data = [message];
 
             // Run
             query._run();
@@ -341,10 +360,14 @@ describe("The Query Class", function() {
         });
 
         it("Should do nothing if there are no more results requested", function() {
-            query.paginationWindow = query._sentPaginationWindow = 50;
+            for (var i = 0; i < 50; i++) query.data.push(message);
+            query.paginationWindow = 50;
             spyOn(query, "_runConversation");
             query._run();
             expect(query._runConversation).not.toHaveBeenCalled();
+
+            // cleanup
+            query.data = [];
         });
     });
 
@@ -392,11 +415,6 @@ describe("The Query Class", function() {
             expect(requests.mostRecent().url).toEqual(client.url + "/conversations?sort_by=created_at&page_size=34&from_id=" + query.data[0].id);
         });
 
-        it("Should update the _sentPaginationWindow", function() {
-            query._sentPaginationWindow = 0;
-            query._runConversation(35);
-            expect(query._sentPaginationWindow).toEqual(35);
-        });
 
         it("Should call _processRunResults", function() {
             spyOn(query, "_processRunResults");
@@ -412,9 +430,73 @@ describe("The Query Class", function() {
         });
     });
 
+    describe("The _getConversationPredicateIds() method", function() {
+        var query;
+        beforeEach(function() {
+            var tmp = layer.Query.prototype._run;
+            layer.Query.prototype._run = function() {}
+            query = new layer.Query({
+                client: client,
+                model: 'Message',
+                paginationWindow: 15
+            });
+            layer.Query.prototype._run = tmp;
+        });
+
+        afterEach(function() {
+            query.destroy();
+        });
+
+        it("Should return a UUID from a single quoted predicate", function() {
+          query.predicate = 'conversation.id = "' + conversation.id + '"'
+          expect(query._getConversationPredicateIds()).toEqual({
+            uuid: conversation.id.replace(/layer\:\/\/\/conversations\//, ""),
+            id: conversation.id
+          });
+        });
+
+        it("Should return a UUID from a double quoted predicate", function() {
+          query.predicate = 'conversation.id = \'' + conversation.id + '\''
+          expect(query._getConversationPredicateIds()).toEqual({
+            uuid: conversation.id.replace(/layer\:\/\/\/conversations\//, ""),
+            id: conversation.id
+          });
+        });
+
+        it("Should return a UUID from a temp id predicate", function() {
+          query.predicate = 'conversation.id = \'temp_' + conversation.id + '\''
+          expect(query._getConversationPredicateIds()).toEqual({
+            uuid: conversation.id.replace(/layer\:\/\/\/conversations\//, ""),
+            id: "temp_" + conversation.id
+          });
+        });
+
+        it("Should return a undefined from an unquoted predicate", function() {
+          query.predicate = 'conversation.id = ' + conversation.id;
+          expect(query._getConversationPredicateIds()).toBe(undefined);
+        });
+
+        it("Should return a undefined from an arbitrarty predicate", function() {
+          query.predicate = 'Frodo is a Dodo';
+          expect(query._getConversationPredicateIds()).toBe(undefined);
+        });
+
+        it("Should return a undefined from an empty predicate", function() {
+          query.predicate = 'Frodo is a Dodo';
+          expect(query._getConversationPredicateIds()).toBe(undefined);
+        });
+
+        it("Should return a undefined from an predicate whose substring looks right", function() {
+          query.predicate = 'conversation.id = "' + conversation.id + '" Frodo is a Dodo';
+          expect(query._getConversationPredicateIds()).toBe(undefined);
+        });
+    });
+
     describe("The _runMessage() method", function() {
         var query;
         beforeEach(function() {
+            conversation.id = conversation.id.replace(/temp_/, '');
+            client._conversationsHash[conversation.id] = conversation;
             var tmp = layer.Query.prototype._run;
             layer.Query.prototype._run = function() {}
             query = new layer.Query({
@@ -430,17 +512,20 @@ describe("The Query Class", function() {
             query.destroy();
         });
 
-        it("Should set isFiring to true", function() {
+        it("Should set isFiring to true if _getConversationPredicateIds returns an id", function() {
+            spyOn(query, "_getConversationPredicateIds").and.returnValue({
+              uuid: conversation.id.replace(/^layer\:\/\/\/conversations\//,''),
+              id: conversation.id
+            });
             query.isFiring = false;
             query._runMessage(37);
             expect(query.isFiring).toBe(true);
         });
 
-        it("Should do nothing if no conversation id", function() {
+        it("Should set isFiring to false if _getConversationPredicateIds returns undefined", function() {
+            spyOn(query, "_getConversationPredicateIds").and.returnValue(undefined);
             query.isFiring = false;
-            query.predicate = 'conversation.id = ""';
-            query._predicate = '';
-            query._runMessage(38);
+            query._runMessage(37);
             expect(query.isFiring).toBe(false);
         });
 
@@ -452,15 +537,24 @@ describe("The Query Class", function() {
             expect(query.isFiring).toBe(false);
         });
 
-        it("Should do nothing if temp conversation id", function() {
+        it("Should update _predicate for temp conversation id", function() {
             var conversation1 = client.createConversation(["zzz"]);
 
             query.isFiring = false;
             query.predicate = 'conversation.id = "' + conversation1.id + '"';
             query._predicate = '';
             query._runMessage(40);
-            expect(query.isFiring).toBe(false);
+            expect(query._predicate).toEqual(conversation1.id);
         });
+
+        it("Should update _predicate for non-temp conversation id", function() {
+            query.isFiring = false;
+            query.predicate = 'conversation.id = "' + conversation.id + '"';
+            query._predicate = '';
+            query._runMessage(40);
+            expect(query._predicate).toEqual(conversation.id);
+        });
+
 
         it("Should call without from_id", function() {
             query._runMessage(41);
@@ -515,12 +609,6 @@ describe("The Query Class", function() {
             expect(requests.count()).toEqual(1);
         });
 
-        it("Should update the _sentPaginationWindow", function() {
-            query._sentPaginationWindow = 0;
-            query._runMessage(46);
-            expect(query._sentPaginationWindow).toEqual(46);
-        });
-
         it("Should call _processRunResults", function() {
             spyOn(query, "_processRunResults");
             query._runMessage(47);
@@ -535,14 +623,14 @@ describe("The Query Class", function() {
         });
 
         it("Should add lastMessage to the results", function() {
-            spyOn(query, "trigger");
+            spyOn(query, "_triggerChange");
 
             // Run
             query._runMessage(48);
 
             // Posttest
             expect(query.data).toEqual([conversation.lastMessage]);
-            expect(query.trigger).toHaveBeenCalledWith('change', {
+            expect(query._triggerChange).toHaveBeenCalledWith({
               type: 'data',
               data: conversation.lastMessage,
               query: query,
@@ -575,7 +663,9 @@ describe("The Query Class", function() {
             query._processRunResults({
                 success: true,
                 data: [],
-                xhr: {}
+                xhr: {
+                    getResponseHeader: function() {return 6;},
+                }
             }, requestUrl);
             expect(query.isFiring).toBe(false);
         });
@@ -584,7 +674,9 @@ describe("The Query Class", function() {
             query._processRunResults({
                 success: false,
                 data: [],
-                xhr: {}
+                xhr: {
+                    getResponseHeader: function() {return 6;},
+                }
             }, requestUrl);
             expect(query.isFiring).toBe(false);
         });
@@ -594,12 +686,14 @@ describe("The Query Class", function() {
             query._processRunResults({
                 success: true,
                 data: [{id: "a"}],
-                xhr: {}
+                xhr: {
+                    getResponseHeader: function() {return 6;},
+                }
             }, requestUrl);
             expect(query._appendResults).toHaveBeenCalledWith({
                 success: true,
                 data: [{id: "a"}],
-                xhr: {}
+                xhr: jasmine.any(Object)
             });
         });
 
@@ -607,7 +701,7 @@ describe("The Query Class", function() {
             spyOn(query, "_run");
             spyOn(query, "_appendResults");
             query.paginationWindow = 100;
-            query._sentPaginationWindow = 10;
+            query.data = [message, message, message, message, message, message, message];
             query._processRunResults({
                 success: true,
                 data: [{id: "a"}],
@@ -643,7 +737,16 @@ describe("The Query Class", function() {
             expect(query._firingRequest).toEqual('fred');
         });
 
-
+        it("Should set the totalSize property", function() {
+             query._processRunResults({
+                success: true,
+                data: [responses.message1],
+                xhr: {
+                    getResponseHeader: function() {return 6;},
+                }
+            }, requestUrl);
+            expect(query.totalSize).toEqual(6);
+        });
     });
 
     describe("The _appendResults() method", function() {
@@ -1069,13 +1172,13 @@ describe("The Query Class", function() {
                     newValue: ["a", "b"],
                     target: conversation
                 }, "conversations:change");
-                spyOn(query, "trigger");
+                spyOn(query, "_triggerChange");
 
                 // Run
                 query._handleConversationChangeEvent(evt);
 
                 // Posttest
-                expect(query.trigger).toHaveBeenCalledWith("change", {
+                expect(query._triggerChange).toHaveBeenCalledWith({
                     type: "property",
                     target: conversation.toObject(),
                     query: query,
@@ -1166,13 +1269,13 @@ describe("The Query Class", function() {
                     newValue: ["a", "b"],
                     target: conversation
                 }, "conversations:change");
-                spyOn(query, "trigger");
+                spyOn(query, "_triggerChange");
 
                 // Run
                 query._handleConversationChangeEvent(evt);
 
                 // Posttest
-                expect(query.trigger).toHaveBeenCalledWith("change", {
+                expect(query._triggerChange).toHaveBeenCalledWith({
                     type: "property",
                     target: conversation,
                     query: query,
@@ -1289,13 +1392,13 @@ describe("The Query Class", function() {
                     newValue: ["a", "b"],
                     target: conversation
                 }, "conversations:change");
-                spyOn(query, "trigger");
+                spyOn(query, "_triggerChange");
 
                 // Run
                 query._handleConversationChangeEvent(evt);
 
                 // Posttest
-                expect(query.trigger).toHaveBeenCalledWith("change", {
+                expect(query._triggerChange).toHaveBeenCalledWith({
                     type: "property",
                     target: conversation.toObject(),
                     query: query,
@@ -1386,13 +1489,13 @@ describe("The Query Class", function() {
                     newValue: ["a", "b"],
                     target: conversation
                 }, "conversations:change");
-                spyOn(query, "trigger");
+                spyOn(query, "_triggerChange");
 
                 // Run
                 query._handleConversationChangeEvent(evt);
 
                 // Posttest
-                expect(query.trigger).toHaveBeenCalledWith("change", {
+                expect(query._triggerChange).toHaveBeenCalledWith({
                     type: "property",
                     target: conversation,
                     query: query,
@@ -1615,6 +1718,20 @@ describe("The Query Class", function() {
             // Posttest
             expect(query.trigger).not.toHaveBeenCalled();
         });
+
+        it("Should increase the totalSize property", function() {
+            var conversation2 = client.createConversation(["aza"]);
+            var data = query.data = [];
+            expect(query.totalSize).toEqual(0);
+
+            // Run
+            query._handleConversationAddEvent({
+                conversations: [conversation, conversation2]
+            });
+
+            // Posttest
+            expect(query.totalSize).toEqual(2);
+        });
     });
 
     describe("The _handleConversationRemoveEvent() method", function() {
@@ -1677,7 +1794,7 @@ describe("The Query Class", function() {
         });
 
         it("Should trigger change event for each removal", function() {
-            spyOn(query, "trigger");
+            spyOn(query, "_triggerChange");
 
             // Run
             query._handleConversationRemoveEvent({
@@ -1685,13 +1802,13 @@ describe("The Query Class", function() {
             });
 
             // Posttest
-            expect(query.trigger).toHaveBeenCalledWith("change", {
+            expect(query._triggerChange).toHaveBeenCalledWith({
                 type: 'remove',
                 index: 0,
                 target: conversation.toObject(),
                 query: query
             });
-            expect(query.trigger).toHaveBeenCalledWith("change", {
+            expect(query._triggerChange).toHaveBeenCalledWith({
                 type: 'remove',
                 index: 0,
                 target: conversation2.toObject(),
@@ -1710,6 +1827,21 @@ describe("The Query Class", function() {
 
             // Posttest
             expect(query.trigger).not.toHaveBeenCalled();
+        });
+
+        it("Should increase the totalSize property", function() {
+            var conversation2 = client.createConversation(["aza"]);
+            var conversation3 = client.createConversation(["azab"]);
+            var data = query.data = [conversation, conversation2, conversation3];
+            query.totalSize = 3;
+
+            // Run
+            query._handleConversationRemoveEvent({
+                conversations: [conversation, conversation2]
+            });
+
+            // Posttest
+            expect(query.totalSize).toEqual(1);
         });
     });
 
@@ -1970,13 +2102,13 @@ describe("The Query Class", function() {
                 newValue: [{a: "read"}],
                 target: message
             }, "messages:change");
-            spyOn(query, "trigger");
+            spyOn(query, "_triggerChange");
 
             // Run
             query._handleMessageChangeEvent(evt);
 
             // Posttest
-            expect(query.trigger).toHaveBeenCalledWith("change", {
+            expect(query._triggerChange).toHaveBeenCalledWith({
                 type: "property",
                 target: message.toObject(),
                 query: query,
@@ -2088,7 +2220,7 @@ describe("The Query Class", function() {
 
         it("Should trigger change event if new values", function() {
             var data = query.data = [];
-            spyOn(query, "trigger");
+            spyOn(query, "_triggerChange");
 
             // Run
             query._handleMessageAddEvent({
@@ -2096,13 +2228,13 @@ describe("The Query Class", function() {
             });
 
             // Posttest
-            expect(query.trigger).toHaveBeenCalledWith("change", {
+            expect(query._triggerChange).toHaveBeenCalledWith({
                 type: 'insert',
                 index: 1,
                 target: message1.toObject(),
                 query: query
             });
-            expect(query.trigger).toHaveBeenCalledWith("change", {
+            expect(query._triggerChange).toHaveBeenCalledWith({
                 type: 'insert',
                 index: 0,
                 target: message2.toObject(),
@@ -2121,6 +2253,18 @@ describe("The Query Class", function() {
 
             // Posttest
             expect(query.trigger).not.toHaveBeenCalled();
+        });
+
+        it("Should increase the totalCount property", function() {
+          expect(query.totalSize).toEqual(0);
+
+          // Run
+          query._handleMessageAddEvent({
+              messages: [message1, message2]
+          });
+
+          // Posttest
+          expect(query.totalSize).toEqual(2);
         });
     });
 
@@ -2187,7 +2331,7 @@ describe("The Query Class", function() {
         });
 
         it("Should trigger change event for each removal", function() {
-            spyOn(query, "trigger");
+            spyOn(query, "_triggerChange");
 
             // Run
             query._handleMessageRemoveEvent({
@@ -2195,13 +2339,13 @@ describe("The Query Class", function() {
             });
 
             // Posttest
-            expect(query.trigger).toHaveBeenCalledWith("change", {
+            expect(query._triggerChange).toHaveBeenCalledWith({
                 type: 'remove',
                 index: 0,
                 target: message1.toObject(),
                 query: query
             });
-            expect(query.trigger).toHaveBeenCalledWith("change", {
+            expect(query._triggerChange).toHaveBeenCalledWith({
                 type: 'remove',
                 index: 0,
                 target: message2.toObject(),
@@ -2221,6 +2365,90 @@ describe("The Query Class", function() {
             // Posttest
             expect(query.trigger).not.toHaveBeenCalled();
         });
+
+        it("Should decrease the totalCount property", function() {
+          query.data = [message, message1, message2];
+          query.totalSize = 3;
+
+          // Run
+          query._handleMessageRemoveEvent({
+              messages: [message1, message2]
+          });
+
+          // Posttest
+          expect(query.totalSize).toEqual(1);
+        });
     });
 
+    describe('The _triggerChange() method', function() {
+      var query;
+      beforeEach(function() {
+          query = new layer.Query({
+              client: client,
+              model: 'Message',
+              paginationWindow: 15,
+              dataType: "object",
+              predicate: "conversation.id = '" + conversation.id + "'"
+          });
+      });
+
+      afterEach(function() {
+          query.destroy();
+      });
+
+      it("Should trigger the change event", function() {
+        var spy = jasmine.createSpy('change-event');
+        query.on('change', spy);
+        query._triggerChange({
+          type: 'insert'
+        });
+        expect(spy).toHaveBeenCalledWith(jasmine.any(layer.LayerEvent));
+        expect(spy).toHaveBeenCalledWith(jasmine.objectContaining({
+          type: 'insert'
+        }));
+      });
+
+      it("Should trigger the change:type event", function() {
+        var spy = jasmine.createSpy('change-event');
+        query.on('change:insert', spy);
+        query._triggerChange({
+          type: 'insert'
+        });
+        expect(spy).toHaveBeenCalledWith(jasmine.any(layer.LayerEvent));
+        expect(spy).toHaveBeenCalledWith(jasmine.objectContaining({
+          type: 'insert'
+        }));
+
+      });
+    });
+
+    describe("The size property getter", function() {
+      var query;
+      beforeEach(function() {
+          query = new layer.Query({
+              client: client,
+              model: 'Message',
+              paginationWindow: 15,
+              dataType: "object",
+              predicate: "conversation.id = '" + conversation.id + "'"
+          });
+
+      });
+
+      afterEach(function() {
+          query.destroy();
+      });
+      it("Should have the correct size", function() {
+        query.data = [conversation.createMessage("a"), conversation.createMessage("b"), conversation.createMessage("c")];
+        expect(query.size).toEqual(3);
+      });
+
+      it("Should handle null data", function() {
+        query.data = null;
+        expect(query.size).toEqual(0);
+
+        // cleanup
+        query.data = [];
+      });
+    });
 });
