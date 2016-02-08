@@ -1,5 +1,17 @@
 # Javascript SDK Change Log
 
+## 0.9.1
+
+#### Public API Changes
+
+* layer.Query
+  * The `dataType` property is now set with static properties, either layer.Query.InstanceDataType or layer.Query.ObjectDataType
+  * A `paginationWindow` property larger than the maximum page size that then automatically loads multiple pages is no longer supported.  A paginationWindow larger than the maximum page size will be automatically adjusted to the maximum page size (a value of 500 will be changed to `query.data.length + 100` if its too large)
+  * There is now a `totalSize` property reporting on the total number of results of the query there are on the server.
+  * There is now a `size` property reporting on the total number of results of the query have been loaded from the server.
+  * Previously you subscribe to `change` event and check the `evt.type` for values of `data`, `insert`, `remove`, `reset` and `property`.
+    This still works, but now you can *also* choose to subscribe to `change:data`, `change:insert`, `change:remove`, `change:reset` and `change:property`.
+
 ## 0.9.0 Public Beta Launch
 
 #### Public API Changes

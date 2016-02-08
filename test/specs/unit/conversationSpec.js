@@ -1636,7 +1636,7 @@ describe("The Conversation Class", function() {
         describe("The _createFromServer() method", function() {
             it("Should call _populateFromServer if found", function() {
                 // Setup
-                var c = responses.conversation1;
+                var c = JSON.parse(JSON.stringify(responses.conversation1));
                 spyOn(conversation, "_populateFromServer");
 
                 // Run
@@ -1649,7 +1649,7 @@ describe("The Conversation Class", function() {
 
             it("Should call _populateFromServer", function() {
                 // Setup
-                var c = responses.conversation1;
+                var c = JSON.parse(JSON.stringify(responses.conversation1));
                 c.id += "a";
                 var f = layer.Conversation.prototype._populateFromServer;
                 spyOn(layer.Conversation.prototype, "_populateFromServer");
@@ -1665,7 +1665,7 @@ describe("The Conversation Class", function() {
 
             it("Should throw error if no client provided", function() {
                 // Setup
-                var c = responses.conversation1;
+                var c = JSON.parse(JSON.stringify(responses.conversation1));
 
                 // Run
                 expect(function() {
@@ -1679,7 +1679,7 @@ describe("The Conversation Class", function() {
 
             it("Should setup a client", function() {
                  // Setup
-                var c = responses.conversation1;
+                var c = JSON.parse(JSON.stringify(responses.conversation1));
 
                 // Run
                 var result = layer.Conversation._createFromServer(c, client);
