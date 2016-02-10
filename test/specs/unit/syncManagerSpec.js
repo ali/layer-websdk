@@ -155,6 +155,22 @@ describe("The SyncManager Class", function() {
             expect(syncManager._processNextRequest).toHaveBeenCalled();
         });
 
+        it("Should increment returnToOnlineCount if connected", function() {
+            spyOn(syncManager, "_processNextRequest");
+            syncManager.queue = [new layer.XHRSyncEvent({})];
+            expect(syncManager.queue[0].returnToOnlineCount).toEqual(0);
+
+            // Run
+            client.socketManager.trigger("connected");
+
+            // Posttest
+            expect(syncManager.queue[0].returnToOnlineCount).toEqual(1);
+
+            client.socketManager.trigger("connected");
+
+            expect(syncManager.queue[0].returnToOnlineCount).toEqual(2);
+        });
+
         it("Should reset firing property if disconnected", function() {
             spyOn(syncManager, "_processNextRequest");
             syncManager.queue = [new layer.XHRSyncEvent({firing: true})];
@@ -377,6 +393,15 @@ describe("The SyncManager Class", function() {
     });
 
     describe("The _getErrorState() method", function() {
+
+        it("Should return offline if isOnline is false", function() {
+            expect(syncManager._getErrorState({status: 408}, {retryCount: 0}, false)).toEqual("offline");
+        });
+
+        it("Should return CORS if isOnline is false and returnToOnlineCount is high", function() {
+            expect(syncManager._getErrorState({status: 408}, {retryCount: 0, returnToOnlineCount: 3}, false)).toEqual("CORS");
+        });
+
         it("Should return validateOnlineAndRetry if its a 408 no-response", function() {
             expect(syncManager._getErrorState({status: 408}, {retryCount: 0}, true)).toEqual("validateOnlineAndRetry");
             expect(syncManager._getErrorState({status: 408}, {retryCount: layer.SyncManager.MAX_RETRIES - 1}, true)).toEqual("validateOnlineAndRetry");
@@ -439,7 +464,19 @@ describe("The SyncManager Class", function() {
             syncManager._xhrError(result);
 
             // Posttest
-            expect(syncManager._xhrHandleServerError).toHaveBeenCalledWith(result);
+            expect(syncManager._xhrHandleServerError).toHaveBeenCalledWith(result, jasmine.any(String));
+        });
+
+        it("Should call _xhrHandleServerError if CORS error", function() {
+            spyOn(syncManager, "_xhrHandleServerError");
+            spyOn(syncManager, "_getErrorState").and.returnValue("CORS");
+            var result = {request: request};
+
+            // Run
+            syncManager._xhrError(result);
+
+            // Posttest
+            expect(syncManager._xhrHandleServerError).toHaveBeenCalledWith(result, jasmine.any(String));
         });
 
         it("Should call _xhrValidateIsOnline if validateOnlineAndRetry", function() {
@@ -488,7 +525,7 @@ describe("The SyncManager Class", function() {
             syncManager._xhrError(result);
 
             // Posttest
-            expect(syncManager._xhrHandleServerError).toHaveBeenCalledWith(result);
+            expect(syncManager._xhrHandleServerError).toHaveBeenCalledWith(result, jasmine.any(String));
         });
 
         it("Should call _xhrHandleConnectionError if offline", function() {

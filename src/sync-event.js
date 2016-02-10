@@ -196,6 +196,8 @@ XHRSyncEvent.timeout = 10000;
 
 XHRSyncEvent.prototype.url = '';
 
+XHRSyncEvent.prototype.returnToOnlineCount = 0;
+
 XHRSyncEvent.prototype.headers = null;
 
 XHRSyncEvent.prototype.method = 'GET';

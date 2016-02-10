@@ -78,6 +78,7 @@ class SyncManager extends Root {
    */
   _onlineStateChange(evt) {
     if (evt.eventName === 'connected') {
+      if (this.queue.length) this.queue[0].returnToOnlineCount++;
       setTimeout(() => this._processNextRequest(), 100);
     } else if (evt.eventName === 'disconnected') {
       if (this.queue.length) {
@@ -188,7 +189,13 @@ class SyncManager extends Root {
 
   _getErrorState(result, requestEvt, isOnline) {
     if (!isOnline) {
-      return 'offline';
+      // CORS errors look identical to offline; but if our online state has transitioned from false to true repeatedly while processing this request,
+      // thats a hint that that its a CORS error
+      if (requestEvt.returnToOnlineCount >= SyncManager.MAX_RETRIES_BEFORE_CORS_ERROR) {
+        return 'CORS';
+      } else {
+        return 'offline';
+      }
     } else if (result.status === 408) {
       if (requestEvt.retryCount >= SyncManager.MAX_RETRIES) {
         return 'tooManyFailuresWhileOnline';
@@ -229,7 +236,7 @@ class SyncManager extends Root {
     logger.warn('Sync Manager Error State: ' + errState);
     switch (errState) {
       case 'tooManyFailuresWhileOnline':
-        this._xhrHandleServerError(result);
+        this._xhrHandleServerError(result, 'Sync Manager Server Unavailable Too Long; removing request');
         break;
       case 'validateOnlineAndRetry':
         // Server appears to be hung but will eventually recover.
@@ -251,7 +258,11 @@ class SyncManager extends Root {
         // Server presumably did not like the arguments to this call
         // or the url was invalid.  Do not retry; trigger the callback
         // and let the caller handle it.
-        this._xhrHandleServerError(result);
+        this._xhrHandleServerError(result, 'Sync Manager Server Rejects Request; removing request');
+        break;
+      case 'CORS':
+        // A pattern of offline-like failures that suggests its actually a CORs error
+        this._xhrHandleServerError(result, 'Sync Manager Server detects CORS-like errors; removing request');
         break;
       case 'offline':
         this._xhrHandleConnectionError();
@@ -294,10 +305,10 @@ class SyncManager extends Root {
    * @param  {Object} result  - Response object returned by xhr call
    *
    */
-  _xhrHandleServerError(result) {
+  _xhrHandleServerError(result, logMsg) {
     // Execute all callbacks provided by the request
     result.request.callback(result);
-    logger.error('Sync Manager Server Unavailable Too Long; removing request', result.request);
+    logger.error(logMsg, result.request);
     this.trigger('sync:error', {
       target: result.request.target,
       request: result.request,
@@ -473,8 +484,18 @@ SyncManager.prototype.queue = null;
 /**
  * If the server is returning 502, 503 or 504 errors, exponential backoff
  * should never wait longer than this number of seconds (15 minutes)
+ * @type {Number}
  */
 SyncManager.prototype.maxUnavailableRetryWait = 60 * 15;
+
+/**
+ * How many times can we transition from offline to online state
+ * with this request at the front of the queue before we conclude
+ * that the reason we keep thinking we're going offline is
+ * a CORS error returning a status of 0.  If that pattern
+ * shows 3 times in a row, there is likely a CORS error.
+ */
+SyncManager.MAX_RETRIES_BEFORE_CORS_ERROR = 3;
 
 SyncManager._supportedEvents = [
   /**
