@@ -10,38 +10,32 @@
  * to the `message` event if they want richer event information than is available
  * through the layer.Client class.
  *
- * @class  layer.WebsocketManager
+ * @class  layer.Websockets.SocketManager
  * @extends layer.Root
  * @private
  *
  * TODO: Need to make better use of info from the layer.OnlineStateManager.
  */
-const Root = require('./root');
-const Utils = require('./client-utils');
-const LayerError = require('./layer-error');
-const logger = require('./logger');
-const Message = require('./message');
-const Conversation = require('./conversation');
+const Root = require('../root');
+const Utils = require('../client-utils');
+const logger = require('../logger');
 
-// Wait 15 seconds for a response and then give up
-const DELAY_UNTIL_TIMEOUT = 15 * 1000;
-
-class WebsocketManager extends Root {
+class SocketManager extends Root {
   /**
    * Create a new websocket manager
    *
-   *      var websocketManager = new layer.WebsocketManager({
+   *      var socketManager = new layer.Websockets.SocketManager({
    *          client: client,
    *      });
    *
    * @method
    * @param  {Object} options
    * @param {layer.Client} client
-   * @return {layer.WebsocketManager}
+   * @return {layer.Websockets.SocketManager}
    */
   constructor(options) {
     super(options);
-    if (!this.client) throw new Error('WebsocketManager requires a client');
+    if (!this.client) throw new Error('SocketManager requires a client');
 
     // Insure that on/off methods don't need to call bind, therefore making it easy
     // to add/remove functions as event listeners.
@@ -49,8 +43,6 @@ class WebsocketManager extends Root {
     this._onOpen = this._onOpen.bind(this);
     this._onSocketClose = this._onSocketClose.bind(this);
     this._onError = this._onError.bind(this);
-
-    this._requestCallbacks = {};
 
     // If the client is authenticated, start it up.
     if (this.client.isAuthenticated && this.client.onlineManager.isOnline) {
@@ -111,7 +103,6 @@ class WebsocketManager extends Root {
     // Note that calls that come from sources other than the sync manager may suffer from this.
     // Once the websocket implements retry rather than the sync manager, we may need to enable it
     // to trigger a callback after sufficient time.  Just delete all callbacks.
-    this._requestCallbacks = {};
     this.close();
     if (reset) this._reset();
     this.connect();
@@ -120,7 +111,7 @@ class WebsocketManager extends Root {
   /**
    * Connect to the websocket server
    *
-   * @method
+   * @method connect
    * @param  {layer.SyncEvent} evt - Ignored parameter
    */
   connect(evt) {
@@ -205,7 +196,7 @@ class WebsocketManager extends Root {
   /**
    * The websocket connection is reporting that its now open.
    *
-   * @method
+   * @method _onOpen
    * @private
    */
   _onOpen() {
@@ -223,6 +214,13 @@ class WebsocketManager extends Root {
     }
   }
 
+  /**
+   * Tests to see if the websocket connection is open.  Use the isOpen property
+   * for external tests.
+   * @method _isOpen
+   * @private
+   * @returns {Boolean}
+   */
   _isOpen() {
     if (!this._socket) return false;
     /* istanbul ignore if */
@@ -235,7 +233,7 @@ class WebsocketManager extends Root {
    * Any other error can be ignored... if the connection has
    * failed, onClose will handle it.
    *
-   * @method
+   * @method _onError
    * @private
    * @param  {Error} err - Websocket error
    */
@@ -276,112 +274,7 @@ class WebsocketManager extends Root {
     }));
   }
 
-  /**
-   * Shortcut for sending a request; builds in handling for callbacks
-   *
-   *    manager.sendRequest({
-   *      operation: "delete",
-   *      object: {id: "layer:///conversations/uuid"},
-   *      data: {deletion_mode: "all_participants"}
-   *    }, function(result) {
-   *        alert(result.success ? "Yay" : "Boo");
-   *    });
-   *
-   * @method sendRequest
-   * @param  {Object} data - Data to send to the server
-   * @param  {Function} callback - Handler for success/failure callback
-   */
-  sendRequest(data, callback) {
-    if (!this._isOpen()) {
-      return callback({ success: false, data: { message: 'WebSocket not connected' } });
-    }
-    const body = Utils.clone(data);
-    body.request_id = 'r' + this._nextRequestId++;
-    logger.debug(`Request ${body.request_id} is sending`);
-    if (callback) {
-      this._requestCallbacks[body.request_id] = {
-        date: Date.now(),
-        callback: callback,
-      };
-    }
 
-    this._socket.send(JSON.stringify({
-      type: 'request',
-      body: body,
-    }));
-    this._scheduleCallbackCleanup();
-  }
-
-  /**
-   * Flags a request as having failed if no response within 2 minutes
-   *
-   * @method _scheduleCallbackCleanup
-   * @private
-   */
-  _scheduleCallbackCleanup() {
-    if (!this._callbackCleanupId) {
-      this._callbackCleanupId = setTimeout(this._runCallbackCleanup.bind(this), DELAY_UNTIL_TIMEOUT + 50);
-    }
-  }
-
-  /**
-   * Calls callback with an error.
-   *
-   * NOTE: Because we call requests that expect responses serially instead of in parallel,
-   * currently there should only ever be a single entry in _requestCallbacks.  This may change in the future.
-   *
-   * @method _runCallbackCleanup
-   * @private
-   */
-  _runCallbackCleanup() {
-    this._callbackCleanupId = 0;
-    // If the websocket is closed, ignore all callbacks.  The Sync Manager will reissue these requests as soon as it gets
-    // a 'connected' event... they have not failed.  May need to rethink this for cases where third parties are directly
-    // calling the websocket manager bypassing the sync manager.
-    if (this.isDestroyed || !this._isOpen()) return;
-    let requestId, count = 0;
-    const now = Date.now();
-    for (requestId in this._requestCallbacks) {
-      if (this._requestCallbacks.hasOwnProperty(requestId)) {
-
-        // If the request hasn't expired, we'll need to reschedule callback cleanup; else if its expired...
-        if (now < this._requestCallbacks[requestId].date + DELAY_UNTIL_TIMEOUT) {
-          count++;
-        } else {
-          // If there has been no data from the server, there's probably a problem with the websocket; reconnect.
-          if (now > this._lastDataFromServerTimestamp.getTime() + DELAY_UNTIL_TIMEOUT) {
-            this._reconnect(false);
-            this._scheduleCallbackCleanup();
-            return;
-          } else {
-            // The request isn't responding and the socket is good; fail the request.
-            this._timeoutRequest(requestId);
-          }
-        }
-      }
-    }
-    if (count) this._scheduleCallbackCleanup();
-  }
-
-  _timeoutRequest(requestId) {
-    try {
-      logger.warn('Websocket request timeout');
-      this._requestCallbacks[requestId].callback({
-        success: false,
-        data: new LayerError({
-          id: 'request_timeout',
-          message: 'The server is not responding and maybe has been acquired by skynet.',
-          url: 'https://www.google.com/#q=skynet',
-          code: 0,
-          status: 408,
-          httpStatus: 408,
-        }),
-      });
-    } catch (err) {
-      // Do nothing
-    }
-    delete this._requestCallbacks[requestId];
-  }
 
   /**
    * Shortcut to sending a Counter.read request
@@ -394,9 +287,8 @@ class WebsocketManager extends Root {
    */
   getCounter(callback) {
     logger.debug('Websocket request: getCounter');
-    this.sendRequest({
+    this.client.socketRequestManager.sendRequest({
       method: 'Counter.read',
-
     }, (result) => {
       logger.debug('Websocket response: getCounter ' + result.data.counter);
       if (callback) {
@@ -418,12 +310,13 @@ class WebsocketManager extends Root {
    * @param  {Function} [callback] - Optional callback for completion
    */
   replayEvents(timestamp, force, callback) {
-    if (!this._isOpen() || !timestamp) return;
+    if (!timestamp) return;
     if (force) this._inReplay = false;
 
     // If we are already waiting for a replay to complete, record the timestamp from which we
     // need to replay on our next replay request
-    if (this._inReplay) {
+    // If we are simply unable to replay because we're disconnected, capture the _needsReplayFrom
+    if (this._inReplay || !this._isOpen()) {
       if (!this._needsReplayFrom) {
         logger.debug('Websocket request: replayEvents updating _needsReplayFrom');
         this._needsReplayFrom = timestamp;
@@ -431,7 +324,7 @@ class WebsocketManager extends Root {
     } else {
       this._inReplay = true;
       logger.info('Websocket request: replayEvents');
-      this.sendRequest({
+      this.client.socketRequestManager.sendRequest({
         method: 'Event.replay',
         data: {
           from_timestamp: timestamp,
@@ -478,23 +371,10 @@ class WebsocketManager extends Root {
     }
   }
 
-
-  /**
-   * Get the object specified by the `object` property of the websocket packet.
-   *
-   * @method
-   * @private
-   * @param  {Object} msg
-   * @return {layer.Root}
-   */
-  _getObject(msg) {
-    return this.client._getObject(msg.object.id);
-  }
-
   /**
    * Handles a new websocket packet from the server
    *
-   * @method
+   * @method _onMessage
    * @private
    * @param  {Object} evt - Message from the server
    */
@@ -515,153 +395,13 @@ class WebsocketManager extends Root {
         this._lastTimestamp = new Date(msg.timestamp);
       }
 
-      this._processMessage(msg);
-      this._reschedulePing();
-    } catch (err) {
-      logger.error('Layer-Websocket: Failed to handle websocket message: ' + err + '\n', evt.data);
-    }
-  }
-
-  /**
-   * Process the message by message type.
-   *
-   * TODO: signals should be handled here; currently the typing indicator classes
-   * directly listen to the websocket.
-   *
-   * Triggers 'message' event.
-   *
-   * @method _processMessage
-   * @private
-   * @param  {Object} msg
-   */
-  _processMessage(msg) {
-    try {
-      switch (msg.type) {
-        case 'change':
-          this._handleChange(msg.body);
-          break;
-        case 'response':
-          this._handleResponse(msg);
-          break;
-      }
-    } catch (err) {
-      // do nothing
-    }
-    try {
       this.trigger('message', {
         data: msg,
       });
+
+      this._reschedulePing();
     } catch (err) {
-      // do nothing
-    }
-  }
-
-  /**
-   * Handle a response to a request.
-   *
-   * @method _handleResponse
-   * @private
-   * @param  {Object} rawMsg
-   */
-  _handleResponse(rawMsg) {
-    const msg = rawMsg.body;
-    const requestId = msg.request_id;
-    const data = msg.success ? msg.data : new LayerError(msg.data);
-    logger.debug(`Websocket response ${requestId} ${msg.success ? 'Successful' : 'Failed'}`);
-    if (requestId && this._requestCallbacks[requestId]) {
-      this._requestCallbacks[requestId].callback({
-        success: msg.success,
-        data: data,
-        fullData: rawMsg,
-      });
-      delete this._requestCallbacks[requestId];
-    }
-  }
-
-  /**
-   * Handles a Change packet from the server.
-   *
-   * @method _handleChange
-   * @private
-   * @param  {Object} msg
-   */
-  _handleChange(msg) {
-    switch (msg.operation) {
-      case 'create':
-        logger.info(`Websocket Change Event: Create ${msg.object.type} ${msg.object.id}`);
-        logger.debug(msg.data);
-        this._handleCreate(msg);
-        break;
-      case 'delete':
-        logger.info(`Websocket Change Event:  Delete ${msg.object.type} ${msg.object.id}`);
-        logger.debug(msg.data);
-        this._handleDelete(msg);
-        break;
-      case 'patch':
-        logger.info(`Websocket Change Event:  Patch ${msg.object.type} ${msg.object.id}: ${msg.data.map(op => op.property).join(', ')}`);
-        logger.debug(msg.data);
-        this._handlePatch(msg);
-        break;
-    }
-  }
-
-  /**
-   * Process a create object message from the server
-   *
-   * @method _handleCreate
-   * @private
-   * @param  {Object} msg
-   */
-  _handleCreate(msg) {
-    msg.data.fromWebsocket = true;
-    this.client._createObject(msg.data);
-  }
-
-  /**
-   * Handles delete object messages from the server.
-   * All objects that can be deleted from the server should
-   * provide a _deleted() method to be called prior to destroy().
-   *
-   * @method _handleDelete
-   * @private
-   * @param  {Object} msg
-   */
-  _handleDelete(msg) {
-    const entity = this._getObject(msg);
-    if (entity) {
-      entity._deleted();
-      entity.destroy();
-    }
-  }
-
-  /**
-   * On receiving an update/patch message from the server
-   * run the LayerParser on the data.
-   *
-   * @method _handlePatch
-   * @private
-   * @param  {Object} msg
-   */
-  _handlePatch(msg) {
-    // Can only patch a cached object
-    const entity = this._getObject(msg);
-    if (entity) {
-      try {
-        entity._inLayerParser = true;
-        Utils.layerParse({
-          object: entity,
-          type: msg.object.type,
-          operations: msg.data,
-          client: this.client,
-        });
-        entity._inLayerParser = false;
-      } catch (err) {
-        logger.error('websocket-manager: Failed to handle event', msg.data);
-      }
-    } else if (Utils.typeFromID(msg.object.id) === 'conversations') {
-      if (Conversation._loadResourceForPatch(msg.data)) this.client.getConversation(msg.object.id, true);
-    } else if (Utils.typeFromID(msg.object.id) === 'messages') {
-      if (Message._loadResourceForPatch(msg.data)) this.client.getMessage(msg.object.id, true);
+      logger.error('Layer-Websocket: Failed to handle websocket message: ' + err + '\n', evt.data);
     }
   }
 
@@ -699,7 +439,7 @@ class WebsocketManager extends Root {
   /**
    * Close the websocket.
    *
-   * @method
+   * @method close
    */
   close() {
     logger.debug('Websocket close requested');
@@ -715,11 +455,18 @@ class WebsocketManager extends Root {
     }
   }
 
+  /**
+   * Send a packet across the websocket
+   * @method send
+   * @param {Object} obj
+   */
+  send(obj) {
+    this._socket.send(JSON.stringify(obj));
+  }
+
   destroy() {
     this.close();
-    if (this._callbackCleanupId) clearTimeout(this._callbackCleanupId);
     if (this._nextPingId) clearTimeout(this._nextPingId);
-    this._requestCallbacks = null;
     super.destroy();
   }
 
@@ -727,7 +474,7 @@ class WebsocketManager extends Root {
    * If the socket has closed (or if the close method forces it closed)
    * Remove all event handlers and if appropriate, schedule a retry.
    *
-   * @method
+   * @method _onSocketClose
    * @private
    */
   _onSocketClose() {
@@ -788,66 +535,64 @@ class WebsocketManager extends Root {
  * TODO: Integrate info from the layer.OnlineStateManager.
  * @type {Boolean}
  */
-WebsocketManager.prototype.isOpen = false;
+SocketManager.prototype.isOpen = false;
 
 /**
  * setTimeout ID for calling connect()
  * @private
  * @type {Number}
  */
-WebsocketManager.prototype._reconnectId = 0;
-
-WebsocketManager.prototype._nextRequestId = 1;
+SocketManager.prototype._reconnectId = 0;
 
 /**
  * setTimeout ID for calling _connectionFailed()
  * @private
  * @type {Number}
  */
-WebsocketManager.prototype._connectionFailedId = 0;
+SocketManager.prototype._connectionFailedId = 0;
 
-WebsocketManager.prototype._lastTimestamp = null;
-WebsocketManager.prototype._lastDataFromServerTimestamp = null;
-WebsocketManager.prototype._lastCounter = null;
-WebsocketManager.prototype._hasCounter = false;
+SocketManager.prototype._lastTimestamp = null;
+SocketManager.prototype._lastDataFromServerTimestamp = null;
+SocketManager.prototype._lastCounter = null;
+SocketManager.prototype._hasCounter = false;
 
-WebsocketManager.prototype._inReplay = false;
-WebsocketManager.prototype._needsReplayFrom = null;
+SocketManager.prototype._inReplay = false;
+SocketManager.prototype._needsReplayFrom = null;
 
 /**
  * Frequency with which the websocket checks to see if any websocket notifications
  * have been missed.
  * @type {Number}
  */
-WebsocketManager.prototype.pingFrequency = 30000;
+SocketManager.prototype.pingFrequency = 30000;
 
 /**
  * The Client that owns this.
  * @type {layer.Client}
  */
-WebsocketManager.prototype.client = null;
+SocketManager.prototype.client = null;
 
 /**
  * The Socket Connection instance
  * @type {Websocket}
  */
-WebsocketManager.prototype._socket = null;
+SocketManager.prototype._socket = null;
 
 /**
  * Is the websocket connection being closed by a call to close()?
  * If so, we can ignore any errors that signal the socket as closing.
  * @type {Boolean}
  */
-WebsocketManager.prototype._closing = false;
+SocketManager.prototype._closing = false;
 
 /**
  * Number of failed attempts to reconnect.
  * @type {Number}
  */
-WebsocketManager.prototype._lostConnectionCount = 0;
+SocketManager.prototype._lostConnectionCount = 0;
 
 
-WebsocketManager._supportedEvents = [
+SocketManager._supportedEvents = [
   /**
    * A data packet has been received from the server.
    * @event message
@@ -882,5 +627,5 @@ WebsocketManager._supportedEvents = [
    */
   'synced',
 ].concat(Root._supportedEvents);
-Root.initClass.apply(WebsocketManager, [WebsocketManager, 'WebsocketManager']);
-module.exports = WebsocketManager;
+Root.initClass.apply(SocketManager, [SocketManager, 'SocketManager']);
+module.exports = SocketManager;

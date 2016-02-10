@@ -16,7 +16,11 @@ module.exports = {
   SyncEvent: require('./src/sync-event').SyncEvent,
   XHRSyncEvent: require('./src/sync-event').XHRSyncEvent,
   WebsocketSyncEvent: require('./src/sync-event').WebsocketSyncEvent,
-  WebsocketManager: require('./src/websocket-manager'),
+  Websockets: {
+    SocketManager: require('./src/websockets/socket-manager'),
+    RequestManager: require('./src/websockets/request-manager'),
+    ChangeManager: require('./src/websockets/change-manager'),
+  },
   OnlineStateManager: require('./src/online-state-manager'),
   Constants: require('./src/const'),
   Util: require('./src/client-utils'),

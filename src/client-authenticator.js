@@ -30,7 +30,9 @@
 
 const xhr = require('./xhr');
 const Root = require('./root');
-const WebsocketManager = require('./websocket-manager');
+const SocketManager = require('./websockets/socket-manager');
+const WebsocketChangeManager = require('./websockets/change-manager');
+const WebsocketRequestManager = require('./websockets/request-manager');
 const LayerError = require('./layer-error');
 const OnlineManager = require('./online-state-manager');
 const SyncManager = require('./sync-manager');
@@ -122,12 +124,22 @@ class Client extends Root {
    */
   _initComponents() {
     // Setup the websocket manager; won't connect until we trigger an authenticated event
-    this.socketManager = new WebsocketManager({
+    this.socketManager = new SocketManager({
       client: this,
     });
 
+    this.socketChangeManager = new WebsocketChangeManager({
+      client: this,
+      socketManager: this.socketManager,
+    });
+
+    this.socketRequestManager = new WebsocketRequestManager({
+      client: this,
+      socketManager: this.socketManager,
+    });
+
     this.onlineManager = new OnlineManager({
-      websocketManager: this.socketManager,
+      socketManager: this.socketManager,
       testUrl: this.url + '/nonces?connection-test',
       connected: this._handleOnlineChange.bind(this),
       disconnected: this._handleOnlineChange.bind(this),
@@ -135,7 +147,8 @@ class Client extends Root {
 
     this.syncManager = new SyncManager({
       onlineManager: this.onlineManager,
-      websocketManager: this.socketManager,
+      socketManager: this.socketManager,
+      requestManager: this.socketRequestManager,
       client: this,
     });
 
@@ -152,7 +165,10 @@ class Client extends Root {
     this.syncManager.destroy();
     this.onlineManager.destroy();
     this.socketManager.destroy();
+    this.socketChangeManager.destroy();
+    this.socketRequestManager.destroy();
   }
+
   /**
    * Gets/restores the sessionToken
    *
@@ -569,7 +585,7 @@ class Client extends Root {
       }));
     } else {
       if (typeof params.data === 'function') params.data = params.data();
-      this.socketManager.sendRequest(params, callback);
+      this.socketRequestManager.sendRequest(params, callback);
     }
   }
 
@@ -690,7 +706,7 @@ class Client extends Root {
   /**
    * Fix relative URLs to create absolute URLs needed for CORS requests.
    *
-   * @method
+   * @method _xhrFixRelativeUrls
    * @private
    * @param  {string} relative or absolute url
    * @return {string} absolute url
@@ -714,7 +730,7 @@ class Client extends Root {
    * 2. Set the accept header
    * 3. If needed, set the content-type header
    *
-   * @method
+   * @method _xhrFixHeaders
    * @private
    * @param  {Object} headers
    */
@@ -837,9 +853,21 @@ Client.prototype.url = 'https://api.layer.com';
 
 /**
  * Web Socket Manager
- * @type {layer.WebsocketManager}
+ * @type {layer.Websockets.SocketManager}
  */
 Client.prototype.socketManager = null;
+
+/**
+ * Web Socket Request Manager
+* @type {layer.Websockets.RequestManager}
+ */
+Client.prototype.socketRequestManager = null;
+
+/**
+ * Web Socket Manager
+ * @type {layer.Websockets.ChangeManager}
+ */
+Client.prototype.socketChangeManager = null;
 
 /**
  * Service for managing online as well as offline server requests

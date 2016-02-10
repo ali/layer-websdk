@@ -123,7 +123,9 @@ module.exports = function (grunt) {
           "lib/sync-manager.js": "src/sync-manager.js",
           "lib/sync-event.js": "src/sync-event.js",
           "lib/online-state-manager.js": "src/online-state-manager.js",
-          "lib/websocket-manager.js": "src/websocket-manager.js",
+          "lib/websockets/socket-manager.js": "src/websockets/socket-manager.js",
+          "lib/websockets/request-manager.js": "src/websockets/request-manager.js",
+          "lib/websockets/change-manager.js": "src/websockets/change-manager.js",
           "lib/user.js": "src/user.js",
           "lib/layer-error.js": "src/layer-error.js",
           "lib/layer-event.js": "src/layer-event.js",
@@ -256,7 +258,7 @@ module.exports = function (grunt) {
     // Documentation
     jsduck: {
       build: {
-        src: ["lib/**.js", "lib/typing-indicators/**.js"],
+        src: ["lib/**.js", "lib/typing-indicators/**.js", "lib/websockets/**.js"],
         dest: 'docs',
         options: {
           'builtin-classes': false,

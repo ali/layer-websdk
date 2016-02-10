@@ -30,7 +30,7 @@ const {STARTED, PAUSED, FINISHED} = require('./typing-indicators');
 class TypingListener {
 
   /**
-   * Note that this class accepts both WebSocket and WebsocketManager.
+   * Note that this class accepts both WebSocket and layer.Websockets.SocketManager.
    * The manager however is better as every time the websocket connection is lost,
    * it creates a new one without requiring you to update the TypingListener and TypingPublisher.
    *
@@ -38,7 +38,7 @@ class TypingListener {
    * @param  {Object} args
    * @param {HTMLElement} input - A Text editor dom node that will have typing indicators
    * @param {Object} conversation - The Conversation Object or Instance that the input will send messages to
-   * @param {layer.WebsocketManager} websocket - The connection to use for sending typing indicators
+   * @param {layer.Websockets.SocketManager} websocket - The connection to use for sending typing indicators
    */
   constructor(args) {
     this.input = args.input;

@@ -88,11 +88,13 @@ describe("The Typing Indicator Classes", function() {
             it("Should subscribe to the websocket", function() {
                 spyOn(listener, "_handleSocketEvent");
                 listener._clientReady(client);
-                listener._websocket.trigger("message", {"hey": "ho"});
+                listener._websocket.trigger("message", {data: {"hey": "ho"}});
                 expect(listener._handleSocketEvent).toHaveBeenCalledWith(jasmine.any(layer.LayerEvent));
                 expect(listener._handleSocketEvent).toHaveBeenCalledWith(jasmine.objectContaining({
-                    hey: "ho",
-                    eventName: "message"
+                  data: {
+                    hey: "ho"
+                  },
+                  eventName: "message"
                 }));
             });
 

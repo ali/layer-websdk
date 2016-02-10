@@ -21,7 +21,8 @@ describe("The SyncManager Class", function() {
         syncManager = new layer.SyncManager({
             client: client,
             onlineManager: client.onlineManager,
-            websocketManager: client.socketManager
+            socketManager: client.socketManager,
+            requestManager: client.socketRequestManager
         });
         client.onlineManager.isOnline = true;
         client.socketManager._socket = {
@@ -50,7 +51,8 @@ describe("The SyncManager Class", function() {
             var syncManager = new layer.SyncManager({
                 client: client,
                 onlineManager: client.onlineManager,
-                websocketManager: client.socketManager
+                socketManager: client.socketManager,
+                requestManager: client.socketRequestManager
             });
             expect(syncManager).toEqual(jasmine.any(layer.SyncManager));
             syncManager.destroy();
@@ -62,7 +64,8 @@ describe("The SyncManager Class", function() {
             var syncManager = new layer.SyncManager({
                 client: client,
                 onlineManager: client.onlineManager,
-                websocketManager: client.socketManager
+                socketManager: client.socketManager,
+                requestManager: client.socketRequestManager
             });
 
 
@@ -83,7 +86,7 @@ describe("The SyncManager Class", function() {
             var syncManager = new layer.SyncManager({
                 client: client,
                 onlineManager: client.onlineManager,
-                websocketManager: client.socketManager
+                socketManager: client.socketManager,
             });
 
             // Run
@@ -97,13 +100,13 @@ describe("The SyncManager Class", function() {
             syncManager.destroy();
         });
 
-        it("Should listen for websocketManager.connected", function() {
+        it("Should listen for socketManager.connected", function() {
             var tmp = layer.SyncManager.prototype._onlineStateChange;
             spyOn(layer.SyncManager.prototype, "_onlineStateChange");
             var syncManager = new layer.SyncManager({
                 client: client,
                 onlineManager: client.onlineManager,
-                websocketManager: client.socketManager
+                socketManager: client.socketManager,
             });
 
             // Run
@@ -117,13 +120,13 @@ describe("The SyncManager Class", function() {
             syncManager.destroy();
         });
 
-        it("Should listen for websocketManager.disconnected", function() {
+        it("Should listen for socketManager.disconnected", function() {
             var tmp = layer.SyncManager.prototype._onlineStateChange;
             spyOn(layer.SyncManager.prototype, "_onlineStateChange");
             var syncManager = new layer.SyncManager({
                 client: client,
                 onlineManager: client.onlineManager,
-                websocketManager: client.socketManager
+                socketManager: client.socketManager,
             });
 
             // Run
@@ -266,18 +269,18 @@ describe("The SyncManager Class", function() {
 
 
     describe("The _processNextRequest() method", function() {
-        it("Should call websocketManager.sendRequest", function() {
+        it("Should call bsocketManager.sendRequest", function() {
             var data = {name: "fred"}
             syncManager.queue = [new layer.WebsocketSyncEvent({
                 data: data
             })];
-            spyOn(syncManager.websocketManager, "sendRequest");
+            spyOn(syncManager.requestManager, "sendRequest");
 
             // Run
             syncManager._processNextRequest();
 
             // Posttest
-            expect(syncManager.websocketManager.sendRequest).toHaveBeenCalledWith(data, jasmine.any(Function));
+            expect(syncManager.requestManager.sendRequest).toHaveBeenCalledWith(data, jasmine.any(Function));
         });
 
         it("Should call xhr", function() {

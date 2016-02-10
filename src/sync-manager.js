@@ -31,23 +31,25 @@ class SyncManager extends Root {
   /**
    * Creates a new SyncManager.  An Application is expected to only have one of these.
    *
-   *      var websocketManager = new layer.WebsocketManager({client: client});
+   *      var socketManager = new layer.Websockets.SocketManager({client: client});
+   *      var requestManager = new layer.Websockets.RequestManager({client: client, socketManager: socketManager});
    *
    *      var onlineManager = new layer.OnlineManager({
-   *          websocketManager: websocketManager
+   *          socketManager: socketManager
    *      });
    *
    *      // Now we can instantiate this thing...
    *      var SyncManager = new layer.SyncManager({
    *          client: client,
    *          onlineManager: onlineManager,
-   *          websocketManager: websocketManager
+   *          socketManager: socketManager,
+   *          requestManager: requestManager
    *      });
    *
    * @method constructor
    * @param  {Object} options
    * @param {layer.OnlineStateManager} options.onlineManager
-   * @param {layer.WebsocketManager} options.websocketManager
+   * @param {layer.Websockets.RequestManager} options.requestManager
    * @param {layer.Client} options.client
    */
   constructor(options) {
@@ -60,7 +62,7 @@ class SyncManager extends Root {
     this.queue = [];
 
     this.onlineManager.on('disconnected', this._onlineStateChange, this);
-    this.websocketManager.on('connected disconnected', this._onlineStateChange, this);
+    this.socketManager.on('connected disconnected', this._onlineStateChange, this);
   }
 
   isOnline() {
@@ -150,9 +152,9 @@ class SyncManager extends Root {
     const requestEvt = this.queue[0];
     if (this.isOnline() && requestEvt && !requestEvt.firing) {
       if (requestEvt instanceof WebsocketSyncEvent) {
-        if (this.websocketManager && this.websocketManager._isOpen()) {
+        if (this.socketManager && this.socketManager._isOpen()) {
           logger.debug(`Sync Manager Websocket Request Firing ${requestEvt.operation} on target ${requestEvt.target}`, requestEvt.toObject());
-          this.websocketManager.sendRequest(requestEvt._getRequestData(),
+          this.requestManager.sendRequest(requestEvt._getRequestData(),
               result => this._xhrResult(result, requestEvt));
           requestEvt.firing = true;
         } else {
@@ -417,7 +419,7 @@ class SyncManager extends Root {
   /**
    * Remove the SyncEvent request from the queue
    *
-   * @method
+   * @method _removeRequest
    * @private
    * @param  {layer.SyncEvent} requestEvt - SyncEvent Request to remove
    */
@@ -463,10 +465,15 @@ class SyncManager extends Root {
 }
 
 /**
- * Websocket Manager for sending requests
- * @type {layer.WebsocketManager}
+ * Websocket Manager for getting socket state
+ * @type {layer.Websockets.SocketManager}
  */
-SyncManager.prototype.websocketManager = null;
+SyncManager.prototype.socketManager = null;
+
+/** Websocket Request Manager for sending requests
+ * @type {layer.Websockets.RequestManager}
+ */
+SyncManager.prototype.requestManager = null;
 
 /**
  * Reference to the Online Manager

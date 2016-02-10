@@ -1,5 +1,5 @@
 /* eslint-disable */
-describe("The Websocket Manager Class", function() {
+describe("The Websocket Socket Manager Class", function() {
     var socket, client, websocketManager;
     var appId = "Fred's App";
 
@@ -31,9 +31,7 @@ describe("The Websocket Manager Class", function() {
         });
         client.sessionToken = "sessionToken";
         client.userId = "Frodo";
-        websocketManager = new layer.WebsocketManager({
-            client: client
-        });
+        websocketManager = client.socketManager;
 
         conversation = client._createObject(responses.conversation1).conversation;
         requests.reset();
@@ -56,53 +54,49 @@ describe("The Websocket Manager Class", function() {
 
     describe("The constructor() method", function() {
         it("Should return a WebsocketManager", function() {
-            expect(new layer.WebsocketManager({
+            expect(new layer.Websockets.SocketManager({
                 client: client
-            })).toEqual(jasmine.any(layer.WebsocketManager));
+            })).toEqual(jasmine.any(layer.Websockets.SocketManager));
         });
 
         it("Should throw an error if no client", function() {
             expect(function() {
-                new layer.WebsocketManager({});
+                new layer.Websockets.SocketManager({});
             }).toThrow();
         });
 
-        it("Should setup _requestCallbacks", function() {
-            expect(websocketManager._requestCallbacks).toEqual({});
-        });
-
         it("Should call connect if client is authenticated", function() {
-            var tmp = layer.WebsocketManager.prototype.connect;
-            spyOn(layer.WebsocketManager.prototype, "connect");
+            var tmp = layer.Websockets.SocketManager.prototype.connect;
+            spyOn(layer.Websockets.SocketManager.prototype, "connect");
             client.isAuthenticated = true;
 
             // Run
-            new layer.WebsocketManager({
+            new layer.Websockets.SocketManager({
                 client: client
             });
 
             // Posttest
-            expect(layer.WebsocketManager.prototype.connect).toHaveBeenCalledWith();
+            expect(layer.Websockets.SocketManager.prototype.connect).toHaveBeenCalledWith();
 
             // Cleanup
-            layer.WebsocketManager.prototype.connect = tmp;
+            layer.Websockets.SocketManager.prototype.connect = tmp;
         });
 
         it("Should skip connect if client is not authenticated", function() {
-            var tmp = layer.WebsocketManager.prototype.connect;
-            spyOn(layer.WebsocketManager.prototype, "connect");
+            var tmp = layer.Websockets.SocketManager.prototype.connect;
+            spyOn(layer.Websockets.SocketManager.prototype, "connect");
             client.isAuthenticated = false;
 
             // Run
-            new layer.WebsocketManager({
+            new layer.Websockets.SocketManager({
                 client: client
             });
 
             // Posttest
-            expect(layer.WebsocketManager.prototype.connect).not.toHaveBeenCalled();
+            expect(layer.Websockets.SocketManager.prototype.connect).not.toHaveBeenCalled();
 
             // Cleanup
-            layer.WebsocketManager.prototype.connect = tmp;
+            layer.Websockets.SocketManager.prototype.connect = tmp;
         });
 
         it("Should subscribe to call connect on client authenticated", function() {
@@ -241,11 +235,9 @@ describe("The Websocket Manager Class", function() {
 
     describe("The _clearConnectionFailed() method", function() {
       it("Should clear the timeout", function() {
-
-      });
-
-      it("Should clear the id", function() {
-
+	        websocketManager._connectionFailedId = 10;
+          websocketManager._clearConnectionFailed();
+          expect(websocketManager._connectionFailedId).toEqual(0);
       });
     });
 
@@ -439,220 +431,12 @@ describe("The Websocket Manager Class", function() {
         });
     });
 
-    describe("The sendRequest() method", function() {
-        beforeEach(function() {
-            websocketManager._socket.send = jasmine.createSpy('send');
-        });
-
-        it("Should not modify the input object", function() {
-            var body = {body: "good"};
-            websocketManager.sendRequest(body);
-            expect(body).toEqual({body: "good"});
-        });
-
-        it("Should register the callback", function() {
-            websocketManager._requestCallbacks = {};
-            var f = function() {};
-            websocketManager.sendRequest({}, f);
-            var requestId = Object.keys(websocketManager._requestCallbacks)[0];
-            expect(websocketManager._requestCallbacks[requestId]).toEqual({
-                date: jasmine.any(Number),
-                callback: f
-            });
-        });
-
-        it("Should correctly handle no callback", function() {
-            websocketManager._requestCallbacks = {};
-            websocketManager.sendRequest({});
-            expect(websocketManager._requestCallbacks).toEqual({});
-        });
-
-
-        it("Should call _socket.send", function() {
-            websocketManager._requestCallbacks = {};
-            websocketManager.sendRequest({hey: "ho"}, function() {});
-            var requestId = Object.keys(websocketManager._requestCallbacks)[0];
-            expect(JSON.parse(websocketManager._socket.send.calls.allArgs())).toEqual({
-                type: "request",
-                body: {
-                    request_id: requestId,
-                    hey: "ho"
-                }
-            });
-        });
-
-        it("Should call _scheduleCallbackCleanup", function() {
-            spyOn(websocketManager, "_scheduleCallbackCleanup");
-            websocketManager.sendRequest({hey: "ho"});
-            expect(websocketManager._scheduleCallbackCleanup).toHaveBeenCalledWith();
-        });
-    });
-
-
-    describe("The _scheduleCallbackCleanup() method", function() {
-        it("Should schedule a call to _runCallbackCleanup", function() {
-            spyOn(websocketManager, "_runCallbackCleanup");
-
-            // Run
-            websocketManager._scheduleCallbackCleanup();
-            expect(websocketManager._runCallbackCleanup).not.toHaveBeenCalled();
-            jasmine.clock().tick(60000);
-
-            // Posttest
-            expect(websocketManager._runCallbackCleanup).toHaveBeenCalledWith();
-        });
-
-        it("Should do nothing if its already scheduled", function() {
-            spyOn(websocketManager, "_runCallbackCleanup");
-            websocketManager._callbackCleanupId = 5;
-
-            // Run
-            websocketManager._scheduleCallbackCleanup();
-            jasmine.clock().tick(60000);
-
-            // Posttest
-            expect(websocketManager._runCallbackCleanup).not.toHaveBeenCalled();
-        });
-    });
-
-    describe("The _runCallbackCleanup() method", function() {
-        var spy1, spy2, spy3, spy4;
-        beforeEach(function() {
-            var now = new Date();
-            var past = new Date();
-            spy1 = jasmine.createSpy('spy1');
-            spy2 = jasmine.createSpy('spy2');
-            spy3 = jasmine.createSpy('spy3');
-            spy4 = jasmine.createSpy('spy4');
-            past.setHours(past.getHours() - 1);
-            websocketManager._requestCallbacks = {
-                a: {
-                    date: now.getTime(),
-                    callback: spy1
-                },
-                b: {
-                    date: past.getTime(),
-                    callback: spy2,
-                },
-                c: {
-                    date: past.getTime(),
-                    callback: spy3,
-                },
-                d: {
-                    date: now.getTime(),
-                    callback: spy4
-                }
-            };
-        });
-
-        it("Should call _timeoutRequest if the request has expired and there have been other websocket data received", function() {
-            spyOn(websocketManager, "_timeoutRequest");
-            websocketManager._lastDataFromServerTimestamp = new Date();
-            websocketManager._runCallbackCleanup();
-            expect(websocketManager._timeoutRequest).toHaveBeenCalledWith("b");
-            expect(websocketManager._timeoutRequest).toHaveBeenCalledWith("c");
-            expect(websocketManager._timeoutRequest).not.toHaveBeenCalledWith("a");
-            expect(websocketManager._timeoutRequest).not.toHaveBeenCalledWith("d");
-        });
-
-        it("Should reconnect and reschedule if the request has expired and there has been no other websocket data received", function() {
-            spyOn(websocketManager, "_reconnect");
-            spyOn(websocketManager, "_scheduleCallbackCleanup");
-            websocketManager._lastDataFromServerTimestamp = new Date('2010-10-10');
-            websocketManager._runCallbackCleanup();
-            expect(websocketManager._reconnect).toHaveBeenCalledWith(false);
-            expect(websocketManager._scheduleCallbackCleanup).toHaveBeenCalledWith();
-        });
-
-        it("Should reschedule if any requests have not timed out", function() {
-            spyOn(websocketManager, "_scheduleCallbackCleanup");
-            websocketManager._lastDataFromServerTimestamp = new Date();
-            websocketManager._runCallbackCleanup();
-            expect(websocketManager._scheduleCallbackCleanup).toHaveBeenCalledWith();
-        });
-
-        it("Should skip _scheduleCallbackCleanup if no remaining requests", function() {
-            spyOn(websocketManager, "_scheduleCallbackCleanup");
-            websocketManager._lastDataFromServerTimestamp = new Date();
-            delete websocketManager._requestCallbacks.a;
-            delete websocketManager._requestCallbacks.d;
-            websocketManager._runCallbackCleanup();
-            expect(websocketManager._scheduleCallbackCleanup).not.toHaveBeenCalled();
-        });
-
-        it("Should clear _callbackCleanupId if all events are old", function() {
-          websocketManager._lastDataFromServerTimestamp = new Date();
-          websocketManager._callbackCleanupId = 5;
-          delete websocketManager._requestCallbacks.a;
-          delete websocketManager._requestCallbacks.d;
-          websocketManager._runCallbackCleanup();
-          expect(websocketManager._callbackCleanupId).toEqual(0);
-        });
-    });
-
-    describe("The _timeoutRequest() method", function() {
-      var spy1, spy2, spy3, spy4;
-      beforeEach(function() {
-          var now = new Date();
-          var past = new Date();
-          spy1 = jasmine.createSpy('spy1');
-          spy2 = jasmine.createSpy('spy2');
-          spy3 = jasmine.createSpy('spy3');
-          spy4 = jasmine.createSpy('spy4');
-          past.setHours(past.getHours() - 1);
-          websocketManager._requestCallbacks = {
-              a: {
-                  date: now.getTime(),
-                  callback: spy1
-              },
-              b: {
-                  date: past.getTime(),
-                  callback: spy2,
-              },
-              c: {
-                  date: past.getTime(),
-                  callback: spy3,
-              },
-              d: {
-                  date: now.getTime(),
-                  callback: spy4
-              }
-          };
-      });
-
-      it("Should call the callback", function() {
-        websocketManager._timeoutRequest("b");
-        expect(spy2).toHaveBeenCalledWith(jasmine.objectContaining({
-          success: false,
-          data: jasmine.objectContaining({
-            id: 'request_timeout'
-          })
-        }));
-      });
-
-      it("Should remove the request if the request has expired", function() {
-          websocketManager._timeoutRequest("b");
-          expect(websocketManager._requestCallbacks.a).not.toBe(undefined);
-          expect(websocketManager._requestCallbacks.b).toBe(undefined);
-          expect(websocketManager._requestCallbacks.c).not.toBe(undefined);
-          expect(websocketManager._requestCallbacks.d).not.toBe(undefined);
-      });
-
-      it("Should remove the request even if the callback throws an error", function() {
-          websocketManager._requestCallbacks.b.callback = function() {
-            throw new Error("Doh!");
-          };
-          websocketManager._timeoutRequest("b");
-          expect(websocketManager._requestCallbacks.b).toBe(undefined);
-      });
-
-    });
 
     describe("The getCounter() method", function() {
         it("Should call sendRequest", function() {
-            spyOn(websocketManager, "sendRequest");
+            spyOn(client.socketRequestManager, "sendRequest");
             websocketManager.getCounter();
-            expect(websocketManager.sendRequest).toHaveBeenCalledWith({
+            expect(client.socketRequestManager.sendRequest).toHaveBeenCalledWith({
                 method: "Counter.read"
             }, jasmine.any(Function));
         });
@@ -660,7 +444,7 @@ describe("The Websocket Manager Class", function() {
 
         it("Should call the callback", function() {
             var spy = jasmine.createSpy('spy');
-            spyOn(websocketManager, "sendRequest").and.callFake(function(body, callback) {
+            spyOn(client.socketRequestManager, "sendRequest").and.callFake(function(body, callback) {
                 callback({
                     success: true,
                     data: {counter: 5},
@@ -686,12 +470,14 @@ describe("The Websocket Manager Class", function() {
         });
 
         it("Should set _inReplay if _inReplay isn't set", function() {
+            spyOn(websocketManager, "_isOpen").and.returnValue(true);
             websocketManager._inReplay = false;
             websocketManager.replayEvents(timestamp);
             expect(websocketManager._inReplay).toBe(true);
         });
 
         it("Should update _needsReplayFrom if _inReplay is true, and _needsReplayFrom unset", function() {
+            spyOn(websocketManager, "_isOpen").and.returnValue(true);
             websocketManager._inReplay = true;
             websocketManager._needsReplayFrom = null;
             websocketManager.replayEvents(timestamp);
@@ -700,6 +486,7 @@ describe("The Websocket Manager Class", function() {
         });
 
         it("Should NOT update _needsReplayFrom if _inReplay is true, and _needsReplayFrom is set", function() {
+            spyOn(websocketManager, "_isOpen").and.returnValue(true);
             websocketManager._inReplay = true;
             websocketManager._needsReplayFrom = nexttimestamp;
             websocketManager.replayEvents(timestamp);
@@ -708,39 +495,49 @@ describe("The Websocket Manager Class", function() {
         });
 
         it("Should NOT call sendRequest if _inReplay is true", function() {
-            spyOn(websocketManager, "sendRequest");
+            spyOn(websocketManager, "_isOpen").and.returnValue(true);
+            spyOn(client.socketRequestManager, "sendRequest");
             websocketManager._inReplay = true;
             websocketManager.replayEvents(timestamp);
-            expect(websocketManager.sendRequest).not.toHaveBeenCalled();
+            expect(client.socketRequestManager.sendRequest).not.toHaveBeenCalled();
         });
 
         it("Should ignore _inReplay", function() {
-            spyOn(websocketManager, "sendRequest");
+            spyOn(websocketManager, "_isOpen").and.returnValue(true);
+            spyOn(client.socketRequestManager, "sendRequest");
             websocketManager._inReplay = true;
             websocketManager.replayEvents(timestamp, true);
-            expect(websocketManager.sendRequest).toHaveBeenCalled();
+            expect(client.socketRequestManager.sendRequest).toHaveBeenCalled();
         });
 
         it("Should call sendRequest", function() {
-            spyOn(websocketManager, "sendRequest");
+            spyOn(websocketManager, "_isOpen").and.returnValue(true);
+            spyOn(client.socketRequestManager, "sendRequest");
             websocketManager._inReplay = false;
             websocketManager.replayEvents(timestamp.toISOString());
-            expect(websocketManager.sendRequest).toHaveBeenCalledWith({
+            expect(client.socketRequestManager.sendRequest).toHaveBeenCalledWith({
                 method: "Event.replay",
                 data: {from_timestamp: timestamp.toISOString()}
             }, jasmine.any(Function));
         });
 
         it("Should call _replayEventsComplete", function() {
+            spyOn(websocketManager, "_isOpen").and.returnValue(true);
             var spy = jasmine.createSpy('callback');
-            spyOn(websocketManager, "sendRequest").and.callFake(function(body, callback) {
+            spyOn(client.socketRequestManager, "sendRequest").and.callFake(function(body, callback) {
                 callback({success: true});
             });
             spyOn(websocketManager, "_replayEventsComplete");
             websocketManager._inReplay = false;
             websocketManager.replayEvents(timestamp, false, spy);
             expect(websocketManager._replayEventsComplete).toHaveBeenCalledWith(timestamp, spy, true);
+        });
 
+        it("Should just update _needsReplayFrom if offline", function() {
+          spyOn(websocketManager, "_isOpen").and.returnValue(false);
+          expect(websocketManager._needsReplayFrom).toBe(null);
+          websocketManager.replayEvents(timestamp, false);
+          expect(websocketManager._needsReplayFrom).toEqual(timestamp);
         });
     });
 
@@ -803,17 +600,9 @@ describe("The Websocket Manager Class", function() {
         });
     });
 
-    describe("The _getObject() method", function() {
-        it("Should call client._getObject", function() {
-            spyOn(client, "_getObject").and.returnValue("fred");
-            expect(websocketManager._getObject({object: {id: "jane"}})).toEqual("fred");
-        });
-    });
-
     describe("The _onMessage() method", function() {
         beforeEach(function() {
             spyOn(websocketManager, "replayEvents");
-            spyOn(websocketManager, "_processMessage");
 
             websocketManager._lastCounter = 5;
         });
@@ -874,16 +663,19 @@ describe("The Websocket Manager Class", function() {
             expect(websocketManager._lastTimestamp).toEqual("fred");
         });
 
-        it("Should call _processMessage", function() {
+        it("Should trigger message event", function() {
+            spyOn(websocketManager, "trigger");
             websocketManager._onMessage({data: JSON.stringify({
                 timestamp: "doh",
                 counter: 6,
                 body: {hey: "ho"}
             })});
-            expect(websocketManager._processMessage).toHaveBeenCalledWith({
+            expect(websocketManager.trigger).toHaveBeenCalledWith('message', {
+              data: {
                 timestamp: "doh",
                 counter: 6,
                 body: {hey: "ho"}
+              }
             });
         });
 
@@ -894,364 +686,6 @@ describe("The Websocket Manager Class", function() {
                 counter: 6
             })});
             expect(websocketManager._reschedulePing).toHaveBeenCalledWith();
-        });
-    });
-
-    describe("The _processMessage() method", function() {
-        beforeEach(function() {
-            spyOn(websocketManager, "_handleChange");
-            spyOn(websocketManager, "_handleResponse");
-        });
-
-        it("Should call _handleChange", function() {
-            websocketManager._processMessage({
-                type: "change",
-                body: "fred"
-            });
-            expect(websocketManager._handleChange).toHaveBeenCalledWith("fred");
-            expect(websocketManager._handleResponse).not.toHaveBeenCalled();
-        });
-
-        it("Should call _handleResponse", function(){
-            websocketManager._processMessage({
-                type: "response",
-                body: "fred"
-            });
-            expect(websocketManager._handleChange).not.toHaveBeenCalled();
-            expect(websocketManager._handleResponse).toHaveBeenCalledWith({
-                type: "response",
-                body: "fred"
-            });
-        });
-
-        it("Should trigger message", function() {
-            spyOn(websocketManager, "trigger");
-            websocketManager._processMessage({
-                type: "response",
-                body: "fred"
-            });
-            expect(websocketManager.trigger).toHaveBeenCalledWith("message", {
-                data: {
-                    type: "response",
-                    body: "fred"
-                }
-            });
-        });
-    });
-
-    describe("The _handleResponse() method", function() {
-        var spy1, spy2;
-        beforeEach(function() {
-
-            spy1 = jasmine.createSpy('spy1');
-            spy2 = jasmine.createSpy('spy2');
-
-            websocketManager._requestCallbacks = {
-                a: {
-                    callback: spy1
-                },
-                b: {
-                    callback: spy2
-                }
-            };
-        });
-
-
-        it("Should not fail if no request handler", function() {
-            expect(function() {
-                websocketManager._handleResponse({
-                    body: {
-                        success: true,
-                        request_id: "c"
-                    }
-                });
-            }).not.toThrow();
-        });
-
-        it("Should call the request handler", function() {
-            websocketManager._handleResponse({
-                body: {
-                    success: true,
-                    request_id: "a",
-                    data: {hey: "ho"}
-                }
-            });
-            expect(spy1).toHaveBeenCalledWith({
-                success: true,
-                data: {hey: "ho"},
-                fullData: {
-                    body: {
-                        success: true,
-                        request_id: "a",
-                        data: {hey: "ho"}
-                    }
-                }
-            });
-        });
-
-        it("Should remove the request handler", function() {
-            websocketManager._handleResponse({
-                body: {
-                    success: true,
-                    request_id: "a",
-                    data: {hey: "ho"}
-                }
-            });
-            expect(websocketManager._requestCallbacks.a).toBe(undefined);
-        });
-    });
-
-
-    describe("The _handleChange() method", function() {
-        it("Should call _handleCreate", function() {
-            // Setup
-            spyOn(websocketManager, "_handleCreate");
-
-            // Run
-            websocketManager._handleChange({
-                "operation": "create",
-                data: "fred",
-                object: {}
-            });
-
-            // Posttest
-            expect(websocketManager._handleCreate).toHaveBeenCalledWith({
-                operation: "create",
-                data: "fred",
-                object: {}
-            });
-        });
-
-        it("Should call _handleDelete", function() {
-            // Setup
-            spyOn(websocketManager, "_handleDelete");
-
-            // Run
-            websocketManager._handleChange({
-                "operation": "delete",
-                data: "fred",
-                object: {}
-            });
-
-            // Posttest
-            expect(websocketManager._handleDelete).toHaveBeenCalledWith({
-                operation: "delete",
-                data: "fred",
-                object: {}
-            });
-        });
-
-        it("Should call _handlePatch", function() {
-            // Setup
-            spyOn(websocketManager, "_handlePatch");
-
-            // Run
-            websocketManager._handleChange({
-                "operation": "patch",
-                data: [],
-                object: {}
-            });
-
-            // Posttest
-            expect(websocketManager._handlePatch).toHaveBeenCalledWith({
-                operation: "patch",
-                data: [],
-                object: {}
-            });
-        });
-    });
-
-    describe("The _handleCreate() method", function() {
-        it("Should call client._createObject", function() {
-            spyOn(client, "_createObject");
-            websocketManager._handleCreate({
-                operation: "create",
-                data: {id: "layer:///messages/uuid"}
-            });
-            expect(client._createObject).toHaveBeenCalledWith({
-                id: "layer:///messages/uuid",
-                fromWebsocket: true,
-            });
-        });
-    });
-
-    describe("The _handleDelete() method", function() {
-        it("Should call object._deleted and object.destroy if found", function() {
-            var m = conversation.createMessage("hey");
-            spyOn(websocketManager, "_getObject").and.returnValue(m);
-            spyOn(m, "_deleted");
-            spyOn(m, "destroy");
-
-            // Run
-            websocketManager._handleDelete({
-                object: {
-                    id: "fred"
-                }
-            });
-
-            // Posttest
-            expect(m._deleted).toHaveBeenCalledWith();
-            expect(m.destroy).toHaveBeenCalledWith();
-        });
-
-        it("Should do nothing if the object is not found", function() {
-            var m = conversation.createMessage("hey");
-            spyOn(websocketManager, "_getObject").and.returnValue(null);
-            spyOn(m, "_deleted");
-            spyOn(m, "destroy");
-
-            // Run
-            websocketManager._handleDelete({
-                object: {
-                    id: "fred"
-                }
-            });
-
-            // Posttest
-            expect(m._deleted).not.toHaveBeenCalled();
-            expect(m.destroy).not.toHaveBeenCalled();
-        });
-    });
-
-    describe("The _handlePatch() method", function() {
-        it("Should call Util.layerParse if found", function() {
-            var tmp = layer.Util.layerParse;
-            spyOn(layer.Util, "layerParse");
-            var m = conversation.createMessage("hey");
-            spyOn(websocketManager, "_getObject").and.returnValue(m);
-
-            // Run
-            websocketManager._handlePatch({
-                operation: "patch",
-                object: {
-                    id: m.id,
-                    type: "Message"
-                },
-                data: [{operation: "set", property: "joe", value: "jane"}]
-            });
-
-            // Posttest
-            expect(layer.Util.layerParse).toHaveBeenCalledWith({
-                object: m,
-                type: "Message",
-                operations: [{operation: "set", property: "joe", value: "jane"}],
-                client: client
-            });
-
-            // Cleanup
-            layer.Util.LayerParse = tmp;
-        });
-
-        it("Should load a Conversation if not found and allowed", function() {
-            var tmp = layer.Util.layerParse;
-            spyOn(layer.Util, "layerParse");
-
-            var _loadResourceForPatch = layer.Conversation._loadResourceForPatch;
-            spyOn(layer.Conversation, "_loadResourceForPatch").and.returnValue(true);
-
-            var m = conversation.createMessage("hey");
-            spyOn(websocketManager, "_getObject").and.returnValue(null);
-
-            // Run
-            websocketManager._handlePatch({
-                operation: "patch",
-                object: {
-                    id: "layer:///conversations/fred"
-                },
-                data: [{operation: "set", property: "joe", value: "jane"}]
-            });
-
-            // Posttest
-            expect(layer.Util.layerParse).not.toHaveBeenCalled();
-            expect(requests.mostRecent().url).toEqual(client.url + "/conversations/fred");
-
-            // Cleanup
-            layer.Util.LayerParse = tmp;
-            layer.Conversation._loadResourceForPatch = _loadResourceForPatch;
-        });
-
-        it("Should not load a Conversation if not found and not allowed", function() {
-            var tmp = layer.Util.layerParse;
-            spyOn(layer.Util, "layerParse");
-
-            var _loadResourceForPatch = layer.Conversation._loadResourceForPatch;
-            spyOn(layer.Conversation, "_loadResourceForPatch").and.returnValue(false);
-
-            var m = conversation.createMessage("hey");
-            spyOn(websocketManager, "_getObject").and.returnValue(null);
-
-            // Run
-            websocketManager._handlePatch({
-                operation: "patch",
-                object: {
-                    id: "layer:///conversations/fred"
-                },
-                data: [{operation: "set", property: "joe", value: "jane"}]
-            });
-
-            // Posttest
-            expect(layer.Util.layerParse).not.toHaveBeenCalled();
-            expect(requests.mostRecent()).toBe(undefined);
-
-            // Cleanup
-            layer.Util.LayerParse = tmp;
-            layer.Conversation._loadResourceForPatch = _loadResourceForPatch;
-        });
-
-        it("Should load a Message if not found and allowed", function() {
-            var tmp = layer.Util.layerParse;
-            spyOn(layer.Util, "layerParse");
-
-            var _loadResourceForPatch = layer.Message._loadResourceForPatch;
-            spyOn(layer.Message, "_loadResourceForPatch").and.returnValue(true);
-
-            var m = conversation.createMessage("hey");
-            spyOn(websocketManager, "_getObject").and.returnValue(null);
-
-            // Run
-            websocketManager._handlePatch({
-                operation: "patch",
-                object: {
-                    id: "layer:///messages/fred"
-                },
-                data: [{operation: "set", property: "joe", value: "jane"}]
-            });
-
-            // Posttest
-            expect(layer.Util.layerParse).not.toHaveBeenCalled();
-            expect(requests.mostRecent().url).toEqual(client.url + "/messages/fred");
-
-            // Cleanup
-            layer.Util.LayerParse = tmp;
-            layer.Message._loadResourceForPatch = _loadResourceForPatch;
-        });
-
-        it("Should not load a Message if not found and not allowed", function() {
-            var tmp = layer.Util.layerParse;
-            spyOn(layer.Util, "layerParse");
-
-            var _loadResourceForPatch = layer.Message._loadResourceForPatch;
-            spyOn(layer.Message, "_loadResourceForPatch").and.returnValue(false);
-
-            var m = conversation.createMessage("hey");
-            spyOn(websocketManager, "_getObject").and.returnValue(null);
-
-            // Run
-            websocketManager._handlePatch({
-                operation: "patch",
-                object: {
-                    id: "layer:///messages/fred"
-                },
-                data: [{operation: "set", property: "joe", value: "jane"}]
-            });
-
-            // Posttest
-            expect(layer.Util.layerParse).not.toHaveBeenCalled();
-            expect(requests.mostRecent()).toBe(undefined);
-
-            // Cleanup
-            layer.Util.LayerParse = tmp;
-            layer.Message._loadResourceForPatch = _loadResourceForPatch;
         });
     });
 
@@ -1357,18 +791,13 @@ describe("The Websocket Manager Class", function() {
     });
 
     describe("The destroy() method", function() {
+        afterEach(function() {
+          websocketManager = client.socketManager = new layer.Websockets.SocketManager({client: client});
+        });
         it("Should call close", function() {
             spyOn(websocketManager, "close");
             websocketManager.destroy();
             expect(websocketManager.close).toHaveBeenCalledWith();
-        });
-
-        it("Should clear _callbackCleanupId", function() {
-            var spy = jasmine.createSpy('timeout');
-            websocketManager._callbackCleanupId = setTimeout(spy, 10);
-            websocketManager.destroy();
-            jasmine.clock().tick(100);
-            expect(spy).not.toHaveBeenCalled();
         });
 
         it("Should clear _nextPingId", function() {

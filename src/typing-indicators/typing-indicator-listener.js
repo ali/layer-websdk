@@ -214,7 +214,7 @@ TypingIndicatorListener.prototype._pollId = 0;
 
 /**
  * A websocket connection that will receive remote user typing indicators
- * @property {layer.WebsocketManager}
+ * @property {layer.Websockets.SocketManager}
  * @private
  */
 TypingIndicatorListener.prototype._websocket = null;

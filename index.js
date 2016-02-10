@@ -22,7 +22,11 @@ layer.SyncManager = require('./lib/sync-manager');
 layer.SyncEvent = require('./lib/sync-event').SyncEvent;
 layer.XHRSyncEvent = require('./lib/sync-event').XHRSyncEvent;
 layer.WebsocketSyncEvent = require('./lib/sync-event').WebsocketSyncEvent;
-layer.WebsocketManager = require('./lib/websocket-manager');
+layer.Websockets = {
+  SocketManager: require('./lib/websockets/socket-manager'),
+  RequestManager: require('./lib/websockets/request-manager'),
+  ChangeManager: require('./lib/websockets/change-manager'),
+};
 layer.OnlineStateManager = require('./lib/online-state-manager');
 layer.Constants = require('./lib/const');
 layer.Util = require('./lib/client-utils');

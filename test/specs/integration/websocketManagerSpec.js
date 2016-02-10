@@ -139,7 +139,7 @@ describe("Websocket tests", function() {
     describe("Should route events to the right handler", function() {
         it("Should call _handleCreate", function() {
             // Setup
-            spyOn(socket, "_handleCreate");
+            spyOn(client.socketChangeManager, "_handleCreate");
 
             // Run
             socket._onMessage({data: JSON.stringify({
@@ -154,12 +154,12 @@ describe("Websocket tests", function() {
             })});
 
             // Posttest
-            expect(socket._handleCreate).toHaveBeenCalled();
+            expect(client.socketChangeManager._handleCreate).toHaveBeenCalled();
         });
 
         it("Should call _handleDelete", function() {
             // Setup
-            spyOn(socket, "_handleDelete");
+            spyOn(client.socketChangeManager, "_handleDelete");
 
             // Run
             socket._onMessage({data: JSON.stringify({
@@ -174,12 +174,12 @@ describe("Websocket tests", function() {
             })});
 
             // Posttest
-            expect(socket._handleDelete).toHaveBeenCalled();
+            expect(client.socketChangeManager._handleDelete).toHaveBeenCalled();
         });
 
         it("Should call _handlePatch", function() {
             // Setup
-            spyOn(socket, "_handlePatch");
+            spyOn(client.socketChangeManager, "_handlePatch");
 
             // Run
             socket._onMessage({data: JSON.stringify({
@@ -195,7 +195,7 @@ describe("Websocket tests", function() {
             })});
 
             // Posttest
-            expect(socket._handlePatch).toHaveBeenCalled();
+            expect(client.socketChangeManager._handlePatch).toHaveBeenCalled();
         });
     });
 
@@ -206,7 +206,7 @@ describe("Websocket tests", function() {
             expect(Boolean(client.getConversation(c2.id, false))).toEqual(true);
 
             // Run
-            socket._handleDelete({
+            client.socketChangeManager._handleDelete({
                 "type": "change",
                 "operation": "delete",
                 "object": {
@@ -230,7 +230,7 @@ describe("Websocket tests", function() {
             expect(Boolean(client.getConversation(c1.id, false))).toEqual(false);
 
             // Run
-            socket._handleCreate(conv.body);
+            client.socketChangeManager._handleCreate(conv.body);
 
             // Posttest
             expect(Boolean(client.getConversation(c1.id, false))).toEqual(true);
@@ -246,7 +246,7 @@ describe("Websocket tests", function() {
                 expect(conv.participants).toEqual(["a", "b", "c"]);
 
                 // Run
-                socket._handlePatch({
+                client.socketChangeManager._handlePatch({
                     "operation": "patch",
                     "object": {
                         "type": "Conversation",
@@ -288,7 +288,7 @@ describe("Websocket tests", function() {
                 expect(conv.participants).toEqual(["a", "b", "c"]);
 
                 // Run
-                socket._handlePatch({
+                client.socketChangeManager._handlePatch({
                     "operation": "patch",
                     "object": {
                         "type": "Conversation",
@@ -331,7 +331,7 @@ describe("Websocket tests", function() {
                 expect(conv.participants).toEqual(["a", "b", "c"]);
 
                 // Run
-                socket._handlePatch({
+                client.socketChangeManager._handlePatch({
                     "operation": "patch",
                     "object": {
                         "type": "Conversation",
@@ -376,7 +376,7 @@ describe("Websocket tests", function() {
 
                 // Run
 
-                socket._handlePatch({
+                client.socketChangeManager._handlePatch({
                     "operation": "patch",
                     "object": {
                         "type": "Conversation",
@@ -424,7 +424,7 @@ describe("Websocket tests", function() {
                 expect(conv.participants).toEqual(["a", "b", "c"]);
 
                 // Run
-                socket._handlePatch({
+                client.socketChangeManager._handlePatch({
                     "operation": "patch",
                     "object": {
                         "type": "Conversation",
@@ -458,7 +458,7 @@ describe("Websocket tests", function() {
                 });
 
                 // Run
-                socket._handlePatch({
+                client.socketChangeManager._handlePatch({
                     "operation": "patch",
                     "object": {
                         "type": "Conversation",
@@ -510,7 +510,7 @@ describe("Websocket tests", function() {
             expect(Boolean(client.getMessage(messageDef.body.object.id))).toEqual(false);
 
             // Run
-            socket._handleCreate(messageDef.body);
+            client.socketChangeManager._handleCreate(messageDef.body);
             jasmine.clock().tick(1);
 
             // Posttest
@@ -538,7 +538,7 @@ describe("Websocket tests", function() {
             expect(Boolean(client.getMessage(m.id))).toEqual(true);
 
             // Run
-            socket._handleDelete({
+            client.socketChangeManager._handleDelete({
                 "operation": "delete",
                 "object": {
                     "type": "Message",
@@ -563,7 +563,7 @@ describe("Websocket tests", function() {
             expect(m1.readStatus).toEqual(layer.Constants.RECIPIENT_STATE.SOME);
 
             // Run
-            socket._handlePatch({
+            client.socketChangeManager._handlePatch({
                 "operation": "patch",
                 "object": {
                     "type": "Message",
@@ -597,7 +597,7 @@ describe("Websocket tests", function() {
             spyOn(c2, "_triggerAsync");
 
             // Run
-            socket._handlePatch({
+            client.socketChangeManager._handlePatch({
                 "operation": "patch",
                 "object": {
                     "type": "Conversation",
@@ -628,7 +628,7 @@ describe("Websocket tests", function() {
             spyOn(c2, "_trigger");
 
             // Run
-            socket._handlePatch({
+            client.socketChangeManager._handlePatch({
                 "operation": "patch",
                 "object": {
                     "type": "Conversation",
@@ -664,7 +664,7 @@ describe("Websocket tests", function() {
 
 
             // Run
-            socket._handlePatch({
+            client.socketChangeManager._handlePatch({
                 "operation": "patch",
                 "object": {
                     "type": "Conversation",

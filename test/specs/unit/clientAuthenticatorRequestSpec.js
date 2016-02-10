@@ -107,14 +107,14 @@ describe("The Client Authenticator Requests", function() {
             }));
         });
 
-        it("Should call socketManager.sendRequest if sync is false", function() {
+        it("Should call socketRequestManager.sendRequest if sync is false", function() {
             var callback = function() {};
-            spyOn(client.socketManager, "sendRequest");
+            spyOn(client.socketRequestManager, "sendRequest");
             client.sendSocketRequest({
                 body: "Hey!",
                 sync: false
             }, callback);
-            expect(client.socketManager.sendRequest)
+            expect(client.socketRequestManager.sendRequest)
                 .toHaveBeenCalledWith(jasmine.objectContaining({body: "Hey!"}), callback);
         });
     });

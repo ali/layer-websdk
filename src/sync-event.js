@@ -59,6 +59,8 @@ class SyncEvent  {
 
   /**
    * Returns a POJO version of this object suitable for serializing for the network
+   * @method toObject
+   * @returns {Object}
    */
   toObject() {
     return {data: this.data};

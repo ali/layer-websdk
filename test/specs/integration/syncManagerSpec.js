@@ -21,7 +21,8 @@ describe("SyncManager Integration Tests", function() {
         syncManager = new layer.SyncManager({
             client: client,
             onlineManager: client.onlineManager,
-            websocketManager: client.socketManager
+            socketManager: client.socketManager,
+            requestManager: client.socketRequestManager
         });
         client.onlineManager.isOnline = true;
         client.socketManager._socket = {

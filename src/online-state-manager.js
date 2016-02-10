@@ -36,13 +36,13 @@ class OnlineStateManager extends Root {
    * Creates a new OnlineStateManager.  An Application is expected to only have one of these.
    *
    *      var onlineStateManager = new layer.OnlineStateManager({
-   *          websocketManager: websocketManager,
+   *          socketManager: socketManager,
    *          testUrl: 'https://api.layer.com/nonces'
    *      });
    *
    * @method constructor
    * @param  {Object} options
-   * @param  {layer.WebsocketManager} options.websocketManager - A websocket manager to monitor for messages
+   * @param  {layer.Websockets.SocketManager} options.socketManager - A websocket manager to monitor for messages
    * @param  {string} options.testUrl - A url to send requests to when testing if we are online
    */
   constructor(options) {
@@ -50,7 +50,7 @@ class OnlineStateManager extends Root {
 
     // Listen to all xhr events and websocket messages for online-status info
     xhr.addConnectionListener(evt => this._connectionListener(evt));
-    this.websocketManager.on('message', () => this._connectionListener({ status: 'connection:success' }), this);
+    this.socketManager.on('message', () => this._connectionListener({ status: 'connection:success' }), this);
 
     // Any change in online status reported by the browser should result in
     // an immediate update to our online/offline state
@@ -250,7 +250,7 @@ class OnlineStateManager extends Root {
    */
   destroy() {
     this._clearCheck();
-    this.websocketManager = null;
+    this.socketManager = null;
     super.destroy();
   }
 }
@@ -266,9 +266,9 @@ OnlineStateManager.prototype.testUrl = '';
 /**
  * A Websocket manager whose 'message' event we will listen to
  * in order to know that we are still online.
- * @type {layer.WebsocketManager}
+ * @type {layer.Websockets.SocketManager}
  */
-OnlineStateManager.prototype.websocketManager = null;
+OnlineStateManager.prototype.socketManager = null;
 
 /**
  * Number of testUrl requests we've been offline for.  Will stop growing

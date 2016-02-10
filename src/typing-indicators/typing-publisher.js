@@ -54,7 +54,7 @@ class TypingPublisher {
    *
    * @method constructor
    * @param {Object} args
-   * @param {layer.WebsocketManager} websocket - The Websocket your app is using to listen/send messages
+   * @param {layer.Websockets.SocketManager} websocket - The Websocket your app is using to listen/send messages
    * @param {Object} [conversation=null] - The Conversation Object or Instance that messages are being typed to.
    */
   constructor(args) {
