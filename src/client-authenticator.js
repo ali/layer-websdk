@@ -77,9 +77,9 @@ class Client extends Root {
     // We won't copy in userId; thats set from the identity-token... or from cache.
     // the userId argument is a way to identify if there has been a change of users.
     const requestedUserId = options.userId;
-    const cachedSessionData = global.localStorage ? global.localStorage[LOCALSTORAGE_KEYS.SESSIONDATA + options.appId] : null;
-    let cachedUserId = '';
+    let cachedSessionData = '', cachedUserId = '';
     try {
+      cachedSessionData = global.localStorage ? global.localStorage[LOCALSTORAGE_KEYS.SESSIONDATA + options.appId] : null;
       cachedUserId = cachedSessionData ? JSON.parse(cachedSessionData).userId : '';
     } catch (error) {
       // Do nothing
@@ -391,10 +391,14 @@ class Client extends Root {
     // events is listening for an asynchronous change, and we need to gaurentee that both
     // userId and session are available.
     if (global.localStorage) {
-      global.localStorage[LOCALSTORAGE_KEYS.SESSIONDATA + this.appId] = JSON.stringify({
-        sessionToken: this.sessionToken || '',
-        userId: this.userId || '',
-      });
+      try {
+        global.localStorage[LOCALSTORAGE_KEYS.SESSIONDATA + this.appId] = JSON.stringify({
+          sessionToken: this.sessionToken || '',
+          userId: this.userId || '',
+        });
+      } catch (e) {
+        // Do nothing
+      }
     }
 
     this.isAuthenticated = true;
